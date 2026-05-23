@@ -190,6 +190,9 @@ async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
         while True:
             message = await websocket.receive()
 
+            if message.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect(code=message.get("code", 1000))
+
             if "bytes" in message and message["bytes"]:
                 if is_paused:
                     continue
