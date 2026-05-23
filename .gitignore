@@ -1,0 +1,30 @@
+# Python virtual env
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Node modules & Next.js build
+node_modules/
+.next/
+out/
+build/
+dist/
+.env.local
+.env.production
+.env.development
+
+# Credentials
+.env
+
+# Large model cache
+models/
+
+# Local data & audio
+data/
+*.wav
+*.mp3
+
+# Operating System files
+.DS_Store
+Thumbs.db

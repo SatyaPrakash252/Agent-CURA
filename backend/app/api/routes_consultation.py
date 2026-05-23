@@ -1,0 +1,152 @@
+"""
+Project Cura - Consultation REST API Routes.
+
+Provides endpoints for starting, finalizing, and querying consultations.
+"""
+
+import logging
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException
+
+from app.agents.orchestrator import Orchestrator
+from app.models.database import get_consultation
+from app.models.schemas import (
+    ConsultationFinalizeRequest,
+    ConsultationResult,
+    ConsultationStartRequest,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/consultation", tags=["Consultation"])
+
+
+@router.post("/start")
+async def start_consultation(request: ConsultationStartRequest) -> dict:
+    """
+    Initialize a new consultation session.
+
+    If session_id is not provided, one will be auto-generated.
+
+    Args:
+        request: ConsultationStartRequest with patient_id and optional session_id.
+
+    Returns:
+        Dict with session_id, patient_id, and status.
+    """
+    session_id = request.session_id if request.session_id else str(uuid4())
+    logger.info(
+        "Starting consultation session %s for patient %s",
+        session_id,
+        request.patient_id,
+    )
+    return {
+        "session_id": session_id,
+        "patient_id": request.patient_id,
+        "status": "started",
+    }
+
+
+@router.post("/finalize", response_model=ConsultationResult)
+async def finalize_consultation(
+    request: ConsultationFinalizeRequest,
+) -> ConsultationResult:
+    """
+    Finalize a consultation by processing the transcript through the AI pipeline.
+
+    Runs the full Scribe -> Auditor -> Billing pipeline and returns
+    the complete ConsultationResult.
+
+    Args:
+        request: ConsultationFinalizeRequest with transcript and metadata.
+
+    Returns:
+        Complete ConsultationResult.
+
+    Raises:
+        HTTPException: 400 if transcript is empty, 500 on processing failure.
+    """
+    if not request.transcript or not request.transcript.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Transcript cannot be empty.",
+        )
+
+    session_id = request.session_id if request.session_id else str(uuid4())
+    logger.info(
+        "Finalizing consultation %s for patient %s (transcript length: %d)",
+        session_id,
+        request.patient_id,
+        len(request.transcript),
+    )
+
+    try:
+        orchestrator = Orchestrator()
+        result = await orchestrator.process_consultation(
+            transcript=request.transcript,
+            patient_id=request.patient_id,
+            session_id=session_id,
+            speaker_segments=request.speaker_segments,
+        )
+        return result
+    except Exception as e:
+        logger.error("Consultation finalization failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process consultation: {str(e)}",
+        )
+
+
+@router.get("/{session_id}")
+async def get_consultation_result(session_id: str) -> dict:
+    """
+    Retrieve a consultation result by session_id.
+
+    Args:
+        session_id: The session identifier.
+
+    Returns:
+        The consultation record.
+
+    Raises:
+        HTTPException: 404 if not found.
+    """
+    result = await get_consultation(session_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Consultation {session_id} not found.",
+        )
+    return result
+
+
+@router.get("/{session_id}/fhir")
+async def get_consultation_fhir(session_id: str) -> dict:
+    """
+    Retrieve the FHIR bundle for a consultation.
+
+    Args:
+        session_id: The session identifier.
+
+    Returns:
+        The FHIR Bundle dict.
+
+    Raises:
+        HTTPException: 404 if consultation or FHIR bundle not found.
+    """
+    result = await get_consultation(session_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Consultation {session_id} not found.",
+        )
+
+    fhir_bundle = result.get("fhir_bundle")
+    if fhir_bundle is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No FHIR bundle available for consultation {session_id}.",
+        )
+
+    return fhir_bundle

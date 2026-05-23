@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+pydantic-settings
+faster-whisper
+numpy
+langchain
+langchain-groq
+langchain-core
+supabase
+python-multipart
+websockets
