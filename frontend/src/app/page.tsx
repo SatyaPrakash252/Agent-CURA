@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Badge from '../components/ui/Badge';
 import { API_V1 } from '../lib/constants';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth'; // updated ref
 
 interface DashboardStats {
   patient_count: number;

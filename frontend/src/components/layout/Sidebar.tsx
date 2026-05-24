@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { API_V1 } from '../../lib/constants';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../../hooks/useAuth'; // updated ref
 import type { HealthResponse } from '../../types';
 import MedicalAgentLogo from '../ui/MedicalAgentLogo';
 

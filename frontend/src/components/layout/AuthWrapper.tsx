@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AuthProvider, useAuth } from '../../hooks/useAuth';
+import { AuthProvider, useAuth } from '../../hooks/useAuth'; // updated path resolution
 import LoginPage from '../../app/login/page';
 import Loader from '../ui/Loader';
 
