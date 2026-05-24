@@ -9,11 +9,22 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
-      - WHISPER_MODEL_SIZE=base
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-small}
       - WHISPER_DEVICE=cpu
       - WHISPER_COMPUTE_TYPE=int8
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_EXPIRY_MINUTES=${JWT_EXPIRY_MINUTES:-480}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
     volumes:
       - models_cache:/app/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: always
 
   frontend:
@@ -25,7 +36,14 @@ services:
     environment:
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: always
 
 volumes:

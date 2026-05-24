@@ -4,6 +4,7 @@
 
 export const API_BASE_URL = "http://localhost:8000";
 export const WS_BASE_URL = "ws://localhost:8000";
+export const API_V1 = `${API_BASE_URL}/api/v1`;
 
 // Audio configuration
 export const AUDIO_SAMPLE_RATE = 16000;

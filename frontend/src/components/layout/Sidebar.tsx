@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { API_BASE_URL } from '../../lib/constants';
+import { API_V1 } from '../../lib/constants';
+import { useAuth } from '../../hooks/useAuth';
 import type { HealthResponse } from '../../types';
 
 const nav = [
@@ -18,13 +19,14 @@ export default function Sidebar() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [open, setOpen] = useState(false);
   const [backendOnline, setBackendOnline] = useState(false);
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     const checkHealth = async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 4000);
       try {
-        const r = await fetch(`${API_BASE_URL}/api/health`, {
+        const r = await fetch(`${API_V1}/health`, {
           signal: controller.signal,
           cache: 'no-store',
         });
@@ -109,6 +111,23 @@ export default function Sidebar() {
           {backendOnline && health && (
             <p className="text-[9px] text-[#3f3f46] font-mono mt-1">v{health.version}</p>
           )}
+        </div>
+
+        {/* User & Logout */}
+        <div className="px-3.5 py-3 border-t border-white/[0.04]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-[#a1a1aa] font-medium">{user?.full_name || user?.username || 'User'}</p>
+              <p className="text-[9px] text-[#52525b] font-mono">{user?.role || 'doctor'}</p>
+            </div>
+            <button
+              onClick={logout}
+              className="text-[10px] text-[#71717a] hover:text-[#f87171] transition-colors px-2 py-1 rounded hover:bg-white/[0.03]"
+              title="Sign out"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
     </>

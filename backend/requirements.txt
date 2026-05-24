@@ -11,3 +11,9 @@ langchain-core
 supabase
 python-multipart
 websockets
+PyJWT
+
+# Testing
+pytest
+pytest-asyncio
+httpx

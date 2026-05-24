@@ -1,8 +1,9 @@
 """
 Project Cura - FastAPI Application Entry Point.
 
-Creates the FastAPI app with CORS middleware, router registration,
-lifespan management for Whisper model pre-loading, and health check.
+Creates the FastAPI app with CORS middleware, rate limiting,
+router registration, lifespan management for Whisper model
+pre-loading and admin user bootstrap, and health check.
 """
 
 import logging
@@ -11,10 +12,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_auth import router as auth_router
 from app.api.routes_consultation import router as consultation_router
+from app.api.routes_fhir import router as fhir_router
 from app.api.routes_patients import router as patients_router
 from app.api.ws_audio import router as ws_router
 from app.config import get_settings
+from app.middleware.auth import bootstrap_admin_user
+from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.models.schemas import HealthResponse
 from app.services.transcriber import is_model_loaded, load_model
 
@@ -32,10 +37,9 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan manager.
 
-    Pre-loads the Whisper model at startup so the first request
-    does not incur model loading latency.
+    Pre-loads the Whisper model and bootstraps the admin user at startup.
     """
-    logger.info("Project Cura API starting up...")
+    logger.info("Project Cura API v2.0.0 starting up...")
 
     # Pre-load Whisper model
     try:
@@ -46,6 +50,12 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to pre-load Whisper model: %s", e)
         logger.warning("Whisper model will be loaded on first transcription request.")
 
+    # Bootstrap admin user
+    try:
+        await bootstrap_admin_user()
+    except Exception as e:
+        logger.error("Failed to bootstrap admin user: %s", e)
+
     yield
 
     logger.info("Project Cura API shutting down...")
@@ -55,9 +65,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Project Cura API",
     description=(
-        "Healthcare AI Documentation Platform - "
+        "Healthcare AI Documentation Platform — "
         "Real-time medical consultation transcription, "
-        "SOAP note generation, clinical auditing, and billing code extraction."
+        "SOAP note generation, clinical auditing, billing code extraction, "
+        "and FHIR bundle management."
     ),
     version="2.0.0",
     lifespan=lifespan,
@@ -73,9 +84,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers
+# Rate limiter middleware
+app.add_middleware(RateLimiterMiddleware)
+
+# Include API routers (versioned)
+app.include_router(auth_router)
 app.include_router(consultation_router)
 app.include_router(patients_router)
+app.include_router(fhir_router)
 app.include_router(ws_router)
 
 
@@ -85,12 +101,13 @@ async def root() -> dict:
     return {
         "message": "Welcome to Project Cura API",
         "version": "2.0.0",
+        "api_prefix": "/api/v1",
         "docs": "/docs",
-        "health": "/api/health",
+        "health": "/api/v1/health",
     }
 
 
-@app.get("/api/health", response_model=HealthResponse, tags=["Health"])
+@app.get("/api/v1/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:
     """
     API health check endpoint.
@@ -116,3 +133,10 @@ async def health_check() -> HealthResponse:
         supabase_connected=supabase_connected,
         version="2.0.0",
     )
+
+
+# Keep backward-compatible health endpoint
+@app.get("/api/health", response_model=HealthResponse, tags=["Health"], include_in_schema=False)
+async def health_check_legacy() -> HealthResponse:
+    """Legacy health check endpoint for backward compatibility."""
+    return await health_check()

@@ -3,20 +3,26 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Badge from '../components/ui/Badge';
-import Button from '../components/ui/Button';
-import { API_BASE_URL } from '../lib/constants';
+import { API_V1 } from '../lib/constants';
 
-const demoRows = [
-  { time: '14:22', patient: 'Arjun Mehta', id: 'PAT-2041', note: 'Type 2 Diabetes — Adjusted metformin, ordered HbA1c', score: 94 },
-  { time: '11:45', patient: 'Priya Sharma', id: 'PAT-2039', note: 'Acute URI — Prescribed amoxicillin 500mg × 7d', score: 91 },
-  { time: '16:30', patient: 'Rahul Patel', id: 'PAT-2035', note: 'HTN — BP 150/95, titrated amlodipine 5→10mg', score: 88 },
-  { time: '09:15', patient: 'Sunita Devi', id: 'PAT-2028', note: 'Migraine follow-up — Prophylaxis w/ propranolol', score: 96 },
-  { time: '10:00', patient: 'Vikash Kumar', id: 'PAT-2022', note: 'Wellness check — Vitals normal, BMI 24.1', score: 97 },
-];
+interface DashboardStats {
+  patient_count: number;
+  today_sessions: number;
+  avg_confidence: number;
+}
+
+interface RecentConsultation {
+  session_id: string;
+  patient_id: string;
+  soap_assessment: string;
+  confidence_score: number;
+  created_at: string;
+}
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [pCount, setPCount] = useState(0);
+  const [stats, setStats] = useState<DashboardStats>({ patient_count: 0, today_sessions: 0, avg_confidence: 0 });
+  const [recent, setRecent] = useState<RecentConsultation[]>([]);
   const [online, setOnline] = useState(false);
   const [greeting, setGreeting] = useState('Good day');
 
@@ -28,30 +34,52 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const token = localStorage.getItem('cura_token');
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
     const load = async () => {
       try {
-        const [p, h] = await Promise.allSettled([
-          fetch(`${API_BASE_URL}/api/patients?limit=50`),
-          fetch(`${API_BASE_URL}/api/health`),
+        const [healthRes, statsRes, recentRes] = await Promise.allSettled([
+          fetch(`${API_V1}/health`),
+          fetch(`${API_V1}/consultation/stats/dashboard`, { headers }),
+          fetch(`${API_V1}/consultation/`, { headers }),
         ]);
-        if (p.status === 'fulfilled' && p.value.ok) { const d = await p.value.json(); setPCount(Array.isArray(d) ? d.length : 0); }
-        if (h.status === 'fulfilled' && h.value.ok) setOnline(true);
+
+        if (healthRes.status === 'fulfilled' && healthRes.value.ok) setOnline(true);
+
+        if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+          const d = await statsRes.value.json();
+          setStats(d);
+        }
+
+        if (recentRes.status === 'fulfilled' && recentRes.value.ok) {
+          const d = await recentRes.value.json();
+          if (Array.isArray(d)) setRecent(d.slice(0, 8));
+        }
       } catch {}
       setLoading(false);
     };
     load();
   }, []);
 
+  const formatTime = (dateStr: string) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch { return '—'; }
+  };
+
   const metrics = [
-    { label: 'Patients', value: loading ? '—' : String(pCount || 128) },
-    { label: 'Sessions today', value: loading ? '—' : '7' },
-    { label: 'Avg confidence', value: loading ? '—' : '93%' },
-    { label: 'Uptime', value: loading ? '—' : (online ? '99.9%' : '—') },
+    { label: 'Patients', value: loading ? '—' : String(stats.patient_count || 0) },
+    { label: 'Sessions today', value: loading ? '—' : String(stats.today_sessions || 0) },
+    { label: 'Avg confidence', value: loading ? '—' : `${stats.avg_confidence || 0}%` },
+    { label: 'API status', value: loading ? '—' : (online ? 'Online' : 'Offline') },
   ];
 
   return (
     <div className="space-y-10 animate-in">
-      {/* ── Hero ── */}
+      {/* Hero */}
       <div>
         <p className="text-[12px] text-[#555] font-medium mb-1">Overview</p>
         <h1 className="text-2xl font-semibold text-white tracking-tight">
@@ -59,7 +87,7 @@ export default function DashboardPage() {
         </h1>
       </div>
 
-      {/* ── Metrics ── */}
+      {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden border border-white/[0.06]">
         {metrics.map((m, i) => (
           <div key={i} className="bg-[#09090b] p-5">
@@ -71,7 +99,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Actions ── */}
+      {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Link href="/consultation" className="group">
           <div className="rounded-lg border border-white/[0.06] bg-[#111113] p-6 transition-colors duration-150 hover:bg-[#161618] hover:border-white/[0.1]">
@@ -103,7 +131,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-[13px] font-medium text-white">Patient directory</p>
-                <p className="text-[11px] text-[#555]">128 records</p>
+                <p className="text-[11px] text-[#555]">{stats.patient_count || 0} records</p>
               </div>
             </div>
             <div className="flex items-center text-[12px] text-[#555] group-hover:text-emerald-400 transition-colors">
@@ -134,7 +162,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* ── Recent consultations ── */}
+      {/* Recent consultations — REAL DATA */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <p className="text-[13px] font-medium text-white">Recent consultations</p>
@@ -145,24 +173,37 @@ export default function DashboardPage() {
           {/* Header */}
           <div className="grid grid-cols-12 gap-4 px-4 py-2.5 text-[10px] text-[#444] font-medium uppercase tracking-wider border-b border-white/[0.04] bg-[#0d0d0f]">
             <span className="col-span-1">Time</span>
-            <span className="col-span-2">Patient</span>
-            <span className="col-span-1">ID</span>
-            <span className="col-span-6">SOAP Assessment</span>
+            <span className="col-span-2">Patient ID</span>
+            <span className="col-span-7">Assessment</span>
             <span className="col-span-2 text-right">Confidence</span>
           </div>
 
           {/* Rows */}
-          {demoRows.map((r, i) => (
-            <div key={i} className={`grid grid-cols-12 gap-4 items-center px-4 py-3 transition-colors hover:bg-white/[0.02] cursor-pointer ${i < demoRows.length - 1 ? 'border-b border-white/[0.03]' : ''}`}>
-              <span className="col-span-1 text-[11px] text-[#555] font-mono">{r.time}</span>
-              <span className="col-span-2 text-[12px] text-[#ddd] font-medium">{r.patient}</span>
-              <span className="col-span-1 text-[10px] text-[#444] font-mono">{r.id}</span>
-              <span className="col-span-6 text-[12px] text-[#777] truncate">{r.note}</span>
-              <span className="col-span-2 flex justify-end">
-                <Badge variant={r.score >= 90 ? 'success' : 'warning'} label={`${r.score}%`} size="sm" />
-              </span>
+          {loading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="grid grid-cols-12 gap-4 items-center px-4 py-3 border-b border-white/[0.03]">
+                <span className="col-span-1 skeleton h-3 w-10 rounded" />
+                <span className="col-span-2 skeleton h-3 w-16 rounded" />
+                <span className="col-span-7 skeleton h-3 w-full rounded" />
+                <span className="col-span-2 skeleton h-3 w-10 rounded ml-auto" />
+              </div>
+            ))
+          ) : recent.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-[12px] text-[#52525b]">No consultations yet. Start your first one!</p>
             </div>
-          ))}
+          ) : (
+            recent.map((r, i) => (
+              <div key={r.session_id || i} className={`grid grid-cols-12 gap-4 items-center px-4 py-3 transition-colors hover:bg-white/[0.02] cursor-pointer ${i < recent.length - 1 ? 'border-b border-white/[0.03]' : ''}`}>
+                <span className="col-span-1 text-[11px] text-[#555] font-mono">{formatTime(r.created_at)}</span>
+                <span className="col-span-2 text-[12px] text-[#ddd] font-medium">{r.patient_id}</span>
+                <span className="col-span-7 text-[12px] text-[#777] truncate">{r.soap_assessment || 'No assessment'}</span>
+                <span className="col-span-2 flex justify-end">
+                  <Badge variant={(r.confidence_score || 0) >= 80 ? 'success' : 'warning'} label={`${r.confidence_score || 0}%`} size="sm" />
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

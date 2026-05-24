@@ -1,199 +1,140 @@
-"use client";
+'use client';
 
-/* ===========================================
-   Project Cura – WebSocket Hook
-   Audio streaming + transcript receiving
-   =========================================== */
-
-import { useState, useRef, useCallback, useEffect } from "react";
-import { WS_BASE_URL } from "@/lib/constants";
-import type { ConnectionStatus, TranscriptChunk } from "@/types";
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { WS_BASE_URL } from '../lib/constants';
+import type { TranscriptChunk } from '../types';
 
 interface UseWebSocketOptions {
-  sessionId: string | null;
-  onTranscript?: (chunk: TranscriptChunk) => void;
+  sessionId: string;
+  onTranscriptChunk: (chunk: TranscriptChunk) => void;
+  onStatusChange?: (status: string) => void;
   onError?: (error: string) => void;
-  onStatusChange?: (status: ConnectionStatus) => void;
-  autoConnect?: boolean;
 }
 
-interface UseWebSocketReturn {
-  status: ConnectionStatus;
-  connect: () => void;
-  disconnect: () => void;
-  sendAudio: (data: ArrayBuffer) => void;
-  sendControl: (action: "pause" | "resume" | "stop") => void;
-  lastMessage: TranscriptChunk | null;
-}
+type WSStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
-const MAX_RETRIES = 5;
-const BASE_DELAY = 1000;
-
-export function useWebSocket({
-  sessionId,
-  onTranscript,
-  onError,
-  onStatusChange,
-  autoConnect = false,
-}: UseWebSocketOptions): UseWebSocketReturn {
-  const [status, setStatus] = useState<ConnectionStatus>("closed");
-  const [lastMessage, setLastMessage] = useState<TranscriptChunk | null>(null);
-
+export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onError }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
-  const retriesRef = useRef(0);
+  const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sessionIdRef = useRef(sessionId);
-  const callbacksRef = useRef({ onTranscript, onError, onStatusChange });
+  const [status, setStatus] = useState<WSStatus>('disconnected');
+  const maxReconnectAttempts = 5;
+  const baseDelay = 1000; // 1 second
 
-  // Keep refs up to date
-  useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
-
-  useEffect(() => {
-    callbacksRef.current = { onTranscript, onError, onStatusChange };
-  }, [onTranscript, onError, onStatusChange]);
-
-  const updateStatus = useCallback((newStatus: ConnectionStatus) => {
+  const updateStatus = useCallback((newStatus: WSStatus) => {
     setStatus(newStatus);
-    callbacksRef.current.onStatusChange?.(newStatus);
-  }, []);
+    onStatusChange?.(newStatus);
+  }, [onStatusChange]);
 
-  const clearReconnectTimer = useCallback(() => {
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    updateStatus('connecting');
+
+    try {
+      const ws = new WebSocket(`${WS_BASE_URL}/ws/v1/audio/${sessionId}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        updateStatus('connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          if (data.type === 'transcript' && data.data) {
+            onTranscriptChunk({
+              text: data.data.text,
+              speaker: data.data.speaker || 'Unknown',
+              timestamp: data.data.timestamp || 0,
+              is_final: data.data.is_final || false,
+            });
+          } else if (data.type === 'ping') {
+            // Respond to heartbeat
+            try {
+              ws.send(JSON.stringify({ type: 'pong', data: { ts: data.data?.ts } }));
+            } catch {}
+          } else if (data.type === 'status') {
+            onStatusChange?.(data.data?.status || 'unknown');
+          }
+        } catch {}
+      };
+
+      ws.onclose = (event) => {
+        wsRef.current = null;
+
+        // Don't reconnect on normal closure
+        if (event.code === 1000 || event.code === 1001) {
+          updateStatus('disconnected');
+          return;
+        }
+
+        // Auto-reconnect with exponential backoff
+        if (reconnectAttemptRef.current < maxReconnectAttempts) {
+          reconnectAttemptRef.current += 1;
+          const delay = baseDelay * Math.pow(2, reconnectAttemptRef.current - 1);
+          updateStatus('reconnecting');
+
+          reconnectTimerRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        } else {
+          updateStatus('disconnected');
+          onError?.('WebSocket connection lost after multiple attempts');
+        }
+      };
+
+      ws.onerror = () => {
+        onError?.('WebSocket connection error');
+      };
+    } catch (err) {
+      updateStatus('disconnected');
+      onError?.('Failed to create WebSocket connection');
+    }
+  }, [sessionId, onTranscriptChunk, onStatusChange, onError, updateStatus]);
+
+  const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-  }, []);
-
-  const disconnect = useCallback(() => {
-    clearReconnectTimer();
-    retriesRef.current = MAX_RETRIES; // Prevent reconnection
+    reconnectAttemptRef.current = maxReconnectAttempts; // prevent reconnect
     if (wsRef.current) {
-      wsRef.current.close(1000, "Client disconnect");
+      wsRef.current.close(1000);
       wsRef.current = null;
     }
-    updateStatus("closed");
-  }, [clearReconnectTimer, updateStatus]);
+    updateStatus('disconnected');
+  }, [updateStatus]);
 
-  const connect = useCallback(() => {
-    const currentSessionId = sessionIdRef.current;
-    if (!currentSessionId) {
-      callbacksRef.current.onError?.("No session ID provided");
-      return;
-    }
-
-    // Close existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    clearReconnectTimer();
-    retriesRef.current = 0;
-    updateStatus("connecting");
-
-    const url = `${WS_BASE_URL}/ws/audio/${currentSessionId}`;
-    const ws = new WebSocket(url);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      retriesRef.current = 0;
-      updateStatus("open");
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (typeof event.data === "string") {
-        try {
-          const msg = JSON.parse(event.data);
-
-          // Handle wrapped format: {"type": "transcript", "data": {...}}
-          if (msg.type === "transcript" && msg.data) {
-            const chunk: TranscriptChunk = {
-              text: msg.data.text || "",
-              speaker: msg.data.speaker || "Unknown",
-              timestamp: msg.data.timestamp || 0,
-              is_final: msg.data.is_final || false,
-            };
-            setLastMessage(chunk);
-            callbacksRef.current.onTranscript?.(chunk);
-          } else if (msg.type === "error") {
-            callbacksRef.current.onError?.(msg.message || "Unknown error");
-          } else if (msg.text) {
-            // Handle direct chunk format
-            const chunk: TranscriptChunk = msg as TranscriptChunk;
-            setLastMessage(chunk);
-            callbacksRef.current.onTranscript?.(chunk);
-          }
-        } catch {
-          console.error("Failed to parse WebSocket message:", event.data);
-        }
-      }
-    };
-
-    ws.onclose = (event) => {
-      wsRef.current = null;
-
-      if (event.code === 1000 || retriesRef.current >= MAX_RETRIES) {
-        updateStatus("closed");
-        return;
-      }
-
-      // Exponential backoff reconnect
-      const delay = Math.min(
-        BASE_DELAY * Math.pow(2, retriesRef.current),
-        30000
-      );
-      retriesRef.current += 1;
-      updateStatus("connecting");
-
-      reconnectTimerRef.current = setTimeout(() => {
-        if (sessionIdRef.current) {
-          connect();
-        }
-      }, delay);
-    };
-
-    ws.onerror = () => {
-      updateStatus("error");
-      callbacksRef.current.onError?.("WebSocket connection error");
-    };
-  }, [clearReconnectTimer, updateStatus]);
-
-  const sendAudio = useCallback((data: ArrayBuffer) => {
+  const sendAudio = useCallback((audioData: ArrayBuffer) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(data);
+      wsRef.current.send(audioData);
     }
   }, []);
 
-  const sendControl = useCallback((action: "pause" | "resume" | "stop") => {
+  const sendControl = useCallback((action: string, extra?: Record<string, string>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "control", action }));
+      wsRef.current.send(JSON.stringify({
+        type: 'control',
+        action,
+        ...extra,
+      }));
     }
   }, []);
-
-  // Auto-connect
-  useEffect(() => {
-    if (autoConnect && sessionId) {
-      connect();
-    }
-    return () => {
-      clearReconnectTimer();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoConnect, sessionId]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearReconnectTimer();
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
       if (wsRef.current) {
-        wsRef.current.close(1000, "Component unmount");
-        wsRef.current = null;
+        wsRef.current.close(1000);
       }
     };
-  }, [clearReconnectTimer]);
+  }, []);
 
   return {
     status,
@@ -201,6 +142,6 @@ export function useWebSocket({
     disconnect,
     sendAudio,
     sendControl,
-    lastMessage,
+    isConnected: status === 'connected',
   };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import AudioRecorder from '../../components/consultation/AudioRecorder';
 import LiveTranscript from '../../components/consultation/LiveTranscript';
 import SpeakerLabels from '../../components/consultation/SpeakerLabels';
@@ -10,7 +10,9 @@ import FHIRActions from '../../components/clinical/FHIRActions';
 import SafetyAlerts from '../../components/clinical/SafetyAlerts';
 import Button from '../../components/ui/Button';
 import Loader from '../../components/ui/Loader';
-import { API_BASE_URL } from '../../lib/constants';
+import { ToastContainer } from '../../components/ui/Toast';
+import { API_V1 } from '../../lib/constants';
+import { useToast } from '../../hooks/useToast';
 import { generateReport } from '../../lib/generateReport';
 import type { SpeakerSegment, TranscriptChunk, ConsultationResult } from '../../types';
 
@@ -31,6 +33,7 @@ export default function ConsultationPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
   const segmentCounterRef = useRef(0);
+  const { toasts, dismissToast, success: toastSuccess, error: toastError } = useToast();
 
 
   const genSessionId = () => `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -101,9 +104,13 @@ export default function ConsultationPage() {
         });
       }, 3000);
 
-      const res = await fetch(`${API_BASE_URL}/api/consultation/finalize`, {
+      const token = localStorage.getItem('cura_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_V1}/consultation/finalize`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           session_id: finalSessionId,
           patient_id: patientId,
@@ -117,12 +124,15 @@ export default function ConsultationPage() {
       if (res.ok) {
         const data = await res.json();
         setResult(data);
+        toastSuccess('Consultation finalized successfully!');
       } else {
         const errorText = await res.text();
         console.error('Finalize error:', res.status, errorText);
+        toastError(`Finalization failed: ${res.status === 401 ? 'Authentication required' : 'Server error. Please try again.'}`);
       }
     } catch (err) {
       console.error('Finalize network error:', err);
+      toastError('Network error. Is the backend running?');
     } finally {
       setIsProcessing(false);
       setProcessingStage('');
@@ -145,6 +155,7 @@ export default function ConsultationPage() {
 
   return (
     <div className="animate-in">
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {/* Tab bar */}
       <div className="flex items-center gap-1 mb-5">
         <button onClick={() => setView('record')}

@@ -19,7 +19,7 @@ from app.models.schemas import PatientCreate, PatientResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/patients", tags=["Patients"])
+router = APIRouter(prefix="/api/v1/patients", tags=["Patients"])
 
 
 @router.get("/")

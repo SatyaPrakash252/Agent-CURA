@@ -1,34 +1,39 @@
-# Stage 1: Build the Next.js application
+# Stage 1: Build
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy application source code
 COPY . .
-
-# Build Next.js app
 RUN npm run build
 
-# Stage 2: Serve the application in production mode
+# Stage 2: Production
 FROM node:18-alpine AS runner
 
 WORKDIR /app
 
-# Configure Next.js environment
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy necessary build outputs and dependency files
+# Create non-root user
+RUN addgroup --system --gid 1001 cura && adduser --system --uid 1001 cura
+
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
 
-# Expose Next.js port
+# Install wget for health check
+RUN apk add --no-cache wget
+
+RUN chown -R cura:cura /app
+USER cura
+
 EXPOSE 3000
 
-# Start production server
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -q --spider http://localhost:3000 || exit 1
+
 CMD ["npm", "run", "start"]

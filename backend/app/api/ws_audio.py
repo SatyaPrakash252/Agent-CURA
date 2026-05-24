@@ -91,7 +91,7 @@ def _detect_speaker(
     return prev_speaker
 
 
-@router.websocket("/ws/audio/{session_id}")
+@router.websocket("/ws/v1/audio/{session_id}")
 async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
     """
     WebSocket endpoint for real-time audio streaming and transcription.
@@ -185,6 +185,18 @@ async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
                 logger.error("[%s] Audio processing error: %s", session_id, e)
 
     processor_task = asyncio.create_task(process_audio_chunks())
+
+    # Heartbeat task to detect dead connections
+    async def heartbeat() -> None:
+        """Send periodic ping to keep the connection alive."""
+        while True:
+            try:
+                await asyncio.sleep(30)
+                await websocket.send_json({"type": "ping", "data": {"ts": time.time()}})
+            except Exception:
+                break
+
+    heartbeat_task = asyncio.create_task(heartbeat())
 
     try:
         while True:
@@ -306,6 +318,7 @@ async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
     except Exception as e:
         logger.error("[%s] WebSocket error: %s", session_id, e)
     finally:
+        heartbeat_task.cancel()
         try:
             audio_queue.put_nowait(None)
         except asyncio.QueueFull:
@@ -320,3 +333,4 @@ async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
             session_id,
             segment_counter,
         )
+

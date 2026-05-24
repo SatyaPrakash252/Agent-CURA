@@ -1,9 +1,0 @@
-streamlit
-faster-whisper
-langchain
-langchain-groq
-langchain-community
-supabase
-python-dotenv
-sounddevice
-numpy

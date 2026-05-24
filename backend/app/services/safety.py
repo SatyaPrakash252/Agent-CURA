@@ -157,3 +157,39 @@ class CuraSafety:
             return True, message
 
         return False, "No high-risk terms detected. Plan appears routine."
+
+    def check_drug_safety(self, medications: list[str]) -> list[dict]:
+        """
+        Check a list of medications for drug-drug interactions and dosage issues.
+
+        Args:
+            medications: List of medication strings (may include dosage).
+
+        Returns:
+            List of safety alerts from drug interaction and dosage checks.
+        """
+        from app.services.drug_safety import check_interactions, validate_dosage
+
+        alerts = []
+
+        # Check interactions between all pairs
+        interactions = check_interactions(medications)
+        for interaction in interactions:
+            alerts.append({
+                "level": interaction["severity"],
+                "message": f"Drug interaction: {interaction['drug_a']} + {interaction['drug_b']} — {interaction['description']}",
+                "requires_review": interaction["severity"] == "CRITICAL",
+            })
+
+        # Check dosage ranges for each medication
+        for med in medications:
+            dosage_alert = validate_dosage(med, med)
+            if dosage_alert:
+                alerts.append({
+                    "level": dosage_alert["severity"],
+                    "message": dosage_alert["message"],
+                    "requires_review": dosage_alert["severity"] == "CRITICAL",
+                })
+
+        return alerts
+

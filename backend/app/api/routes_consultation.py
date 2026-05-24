@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from app.agents.orchestrator import Orchestrator
-from app.models.database import get_consultation
+from app.models.database import get_consultation, get_dashboard_stats, get_recent_consultations
 from app.models.schemas import (
     ConsultationFinalizeRequest,
     ConsultationResult,
@@ -19,7 +19,7 @@ from app.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/consultation", tags=["Consultation"])
+router = APIRouter(prefix="/api/v1/consultation", tags=["Consultation"])
 
 
 @router.post("/start")
@@ -150,3 +150,15 @@ async def get_consultation_fhir(session_id: str) -> dict:
         )
 
     return fhir_bundle
+
+
+@router.get("/")
+async def list_recent_consultations() -> list[dict]:
+    """Fetch the 20 most recent consultations across all patients."""
+    return await get_recent_consultations(limit=20)
+
+
+@router.get("/stats/dashboard")
+async def dashboard_stats() -> dict:
+    """Aggregate dashboard statistics (patient count, sessions today, avg confidence)."""
+    return await get_dashboard_stats()
