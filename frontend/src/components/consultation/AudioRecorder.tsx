@@ -7,6 +7,7 @@ import type { TranscriptChunk } from '../../types';
 
 interface AudioRecorderProps {
   sessionId: string;
+  patientId: string;
   onTranscriptChunk: (chunk: TranscriptChunk) => void;
   isRecording: boolean;
   onToggleRecording: () => void;
@@ -56,8 +57,8 @@ function Waveform({ data, active }: { data: number[]; active: boolean }) {
   return <canvas ref={ref} width={640} height={64} className="w-full h-16" />;
 }
 
-export default function AudioRecorder({ sessionId, onTranscriptChunk, isRecording, onToggleRecording }: AudioRecorderProps) {
-  const { status, sendAudio, connect, disconnect } = useWebSocket({
+export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk, isRecording, onToggleRecording }: AudioRecorderProps) {
+  const { status, sendAudio, sendControl, connect, disconnect } = useWebSocket({
     sessionId: isRecording ? sessionId : null,
     onTranscriptChunk: onTranscriptChunk,
   });
@@ -66,7 +67,15 @@ export default function AudioRecorder({ sessionId, onTranscriptChunk, isRecordin
   const { startRecording, stopRecording, waveformData, error, permissionState } = useAudioRecorder({ sendAudio: onChunk });
 
   useEffect(() => {
-    if (isRecording && sessionId) connect(); else disconnect();
+    if (isRecording && sessionId) {
+      connect();
+    } else {
+      // Delay disconnect slightly to allow the stop packet to transmit & backend to save audio
+      const timer = setTimeout(() => {
+        disconnect();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
   }, [isRecording, sessionId, connect, disconnect]);
 
   const [elapsed, setElapsed] = useState(0);
@@ -83,8 +92,19 @@ export default function AudioRecorder({ sessionId, onTranscriptChunk, isRecordin
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   const toggle = async () => {
-    if (!isRecording) await startRecording(); else stopRecording();
-    onToggleRecording();
+    if (!isRecording) {
+      await startRecording();
+      onToggleRecording();
+    } else {
+      // 1. Tell backend to stop and save the audio recording to storage
+      if (status === 'connected') {
+        sendControl('stop', { patient_id: patientId });
+      }
+      // 2. Stop local capture
+      stopRecording();
+      // 3. Toggle state
+      onToggleRecording();
+    }
   };
 
   return (

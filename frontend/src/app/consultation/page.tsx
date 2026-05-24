@@ -196,6 +196,7 @@ export default function ConsultationPage() {
           <div className="surface p-5">
             <AudioRecorder
               sessionId={sessionId || 'pending'}
+              patientId={patientId}
               onTranscriptChunk={handleTranscriptChunk}
               isRecording={isRecording}
               onToggleRecording={() => (isRecording ? handleStop() : handleStart())}
