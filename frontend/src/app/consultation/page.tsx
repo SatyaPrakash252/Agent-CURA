@@ -126,10 +126,36 @@ export default function ConsultationPage() {
   };
 
   const handleFinalize = async () => {
-    if (segments.length === 0) return;
+    if (segments.length === 0) {
+      toastError('Cannot finalize: No transcription segments captured yet.');
+      return;
+    }
+
+    // Client-side intake form validation
+    if (patientMode === 'new') {
+      if (!patientName.trim()) {
+        toastError("Please enter the patient's Full Name before finalizing.");
+        return;
+      }
+      if (!patientId.trim()) {
+        toastError('Please provide a valid Patient ID.');
+        return;
+      }
+      if (patientAge && (isNaN(parseInt(patientAge)) || parseInt(patientAge) <= 0)) {
+        toastError('Please enter a valid age greater than 0.');
+        return;
+      }
+    } else {
+      if (!patientId || patientId === '') {
+        toastError('Please choose a registered patient context before finalizing.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     setView('results');
     setProcessingStage('Scribe');
+
 
     try {
       const transcript = segments.map((s) => `${s.speaker}: ${s.text}`).join('\n');

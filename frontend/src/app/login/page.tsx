@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import MedicalAgentLogo from '../../components/ui/MedicalAgentLogo';
 
 export default function LoginPage() {
   const { login, signup } = useAuth();
@@ -73,10 +74,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#09090b] px-4 py-12">
       <div className="w-full max-w-md">
         {/* Logo and Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] mb-4 shadow-xl shadow-[#6366f1]/20">
-            <span className="text-3xl">🛡️</span>
-          </div>
+        <div className="text-center mb-8 animate-in">
+          <MedicalAgentLogo className="w-16 h-16 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-white tracking-tight">Project Cura</h1>
           <p className="text-[13px] text-[#52525b] mt-1.5">Agentic Clinical Documentation OS</p>
         </div>

@@ -149,7 +149,7 @@
     transition: border-color 150ms;
   }
   .input::placeholder { color: var(--text-ghost); }
-  .input:focus { outline: none; border-color: var(--accent-border); }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-muted); transition: border-color 0.2s, box-shadow 0.2s; }
 }
 
 @layer utilities {
@@ -181,4 +181,39 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
+
+  @keyframes orbit-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  @keyframes orbit-rotate-reverse {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  @keyframes holographic-scan {
+    0% { top: 0%; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  @keyframes neural-pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.35)); }
+    50% { transform: scale(1.03); filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.7)); }
+  }
+
+  .animate-orbit {
+    animation: orbit-rotate 25s linear infinite;
+  }
+
+  .animate-orbit-reverse {
+    animation: orbit-rotate-reverse 15s linear infinite;
+  }
+
+  .animate-neural-pulse {
+    animation: neural-pulse 3s ease-in-out infinite;
+  }
 }
+

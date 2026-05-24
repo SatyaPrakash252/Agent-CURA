@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { API_V1 } from '../../lib/constants';
 import { useAuth } from '../../hooks/useAuth';
 import type { HealthResponse } from '../../types';
+import MedicalAgentLogo from '../ui/MedicalAgentLogo';
 
 const nav = [
   { href: '/', label: 'Dashboard', shortcut: '1', icon: <path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zm0 11h7v7h-7v-7zM3 14h7v7H3v-7z" /> },
@@ -64,11 +65,7 @@ export default function Sidebar() {
 
       <aside className={`fixed top-0 left-0 z-40 h-screen w-56 border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} transition-colors duration-200`}>
         <div className="px-5 py-5 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-[#6366f1] flex items-center justify-center shadow-sm">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-            </svg>
-          </div>
+          <MedicalAgentLogo className="w-8 h-8 flex-shrink-0" />
           <div>
             <p className="text-[14.5px] font-bold text-[var(--text-primary)] tracking-tight">Project Cura</p>
             <p className="text-[11px] text-[var(--text-muted)] leading-none mt-0.5">Clinical AI</p>

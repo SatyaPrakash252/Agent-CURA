@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { API_V1 } from '../lib/constants';
 
 interface User {
@@ -17,23 +17,27 @@ interface AuthState {
   loading: boolean;
 }
 
-export function useAuth() {
+interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  loading: boolean;
+  isAuthenticated: boolean;
+  login: (username: string, password: string) => Promise<string | null>;
+  signup: (username: string, password: string, fullName: string, expertise: string, credentials: string) => Promise<string | null>;
+  logout: () => void;
+  getAuthHeaders: () => Record<string, string>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
     token: null,
     loading: true,
   });
 
-  // Check for saved token on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('cura_token');
-    if (saved) {
-      verifyToken(saved);
-    } else {
-      setState((prev) => ({ ...prev, loading: false }));
-    }
-  }, []);
-
+  // Verify token
   const verifyToken = async (token: string) => {
     try {
       const res = await fetch(`${API_V1}/auth/me`, {
@@ -50,6 +54,16 @@ export function useAuth() {
       setState({ user: null, token: null, loading: false });
     }
   };
+
+  // Check for saved token on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('cura_token');
+    if (saved) {
+      verifyToken(saved);
+    } else {
+      setState((prev) => ({ ...prev, loading: false }));
+    }
+  }, []);
 
   const login = useCallback(async (username: string, password: string): Promise<string | null> => {
     try {
@@ -139,14 +153,26 @@ export function useAuth() {
     return {};
   }, [state.token]);
 
-  return {
-    user: state.user,
-    token: state.token,
-    loading: state.loading,
-    isAuthenticated: !!state.user,
-    login,
-    signup,
-    logout,
-    getAuthHeaders,
-  };
+  return (
+    <AuthContext.Provider value={{
+      user: state.user,
+      token: state.token,
+      loading: state.loading,
+      isAuthenticated: !!state.user,
+      login,
+      signup,
+      logout,
+      getAuthHeaders
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

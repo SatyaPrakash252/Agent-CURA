@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import { AuthProvider, useAuth } from '../../hooks/useAuth';
 import LoginPage from '../../app/login/page';
 import Loader from '../ui/Loader';
 
@@ -9,8 +9,8 @@ interface AuthWrapperProps {
   children: React.ReactNode;
 }
 
-export default function AuthWrapper({ children }: AuthWrapperProps) {
-  const { isAuthenticated, loading, user, logout } = useAuth();
+function AuthContent({ children }: AuthWrapperProps) {
+  const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return (
@@ -26,3 +26,12 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
 
   return <>{children}</>;
 }
+
+export default function AuthWrapper({ children }: AuthWrapperProps) {
+  return (
+    <AuthProvider>
+      <AuthContent>{children}</AuthContent>
+    </AuthProvider>
+  );
+}
+
