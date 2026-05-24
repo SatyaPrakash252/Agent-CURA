@@ -9,11 +9,12 @@ interface UseWebSocketOptions {
   onTranscriptChunk: (chunk: TranscriptChunk) => void;
   onStatusChange?: (status: string) => void;
   onError?: (error: string) => void;
+  language?: string;
 }
 
 type WSStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
-export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onError }: UseWebSocketOptions) {
+export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onError, language }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,7 +33,10 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
     updateStatus('connecting');
 
     try {
-      const ws = new WebSocket(`${WS_BASE_URL}/ws/v1/audio/${sessionId}`);
+      const url = language
+        ? `${WS_BASE_URL}/ws/v1/audio/${sessionId}?language=${encodeURIComponent(language)}`
+        : `${WS_BASE_URL}/ws/v1/audio/${sessionId}`;
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {

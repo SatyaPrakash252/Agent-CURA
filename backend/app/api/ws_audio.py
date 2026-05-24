@@ -24,7 +24,7 @@ router = APIRouter()
 # Audio parameters
 SAMPLE_RATE = 16000  # 16kHz
 BYTES_PER_SAMPLE = 2  # 16-bit PCM
-BUFFER_DURATION_SECONDS = 4.0  # 4 seconds for better Whisper accuracy
+BUFFER_DURATION_SECONDS = 2.0  # 2 seconds for highly responsive real-time STT
 BUFFER_SIZE_BYTES = int(SAMPLE_RATE * BUFFER_DURATION_SECONDS * BYTES_PER_SAMPLE)
 
 # Speaker diarization - energy-based
@@ -92,7 +92,11 @@ def _detect_speaker(
 
 
 @router.websocket("/ws/v1/audio/{session_id}")
-async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
+async def audio_websocket(
+    websocket: WebSocket,
+    session_id: str,
+    language: str | None = None
+) -> None:
     """
     WebSocket endpoint for real-time audio streaming and transcription.
 
@@ -141,7 +145,8 @@ async def audio_websocket(websocket: WebSocket, session_id: str) -> None:
                 )
 
                 # Run transcription
-                segments = transcribe_audio(audio_array)
+                lang_code = language if (language and language != "auto") else None
+                segments = transcribe_audio(audio_array, language=lang_code)
 
                 for seg in segments:
                     text = seg.get("text", "").strip()

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_auth import router as auth_router
 from app.api.routes_consultation import router as consultation_router
+from app.api.routes_database import router as database_router
 from app.api.routes_fhir import router as fhir_router
 from app.api.routes_patients import router as patients_router
 from app.api.ws_audio import router as ws_router
@@ -90,6 +91,7 @@ app.add_middleware(RateLimiterMiddleware)
 # Include API routers (versioned)
 app.include_router(auth_router)
 app.include_router(consultation_router)
+app.include_router(database_router)
 app.include_router(patients_router)
 app.include_router(fhir_router)
 app.include_router(ws_router)

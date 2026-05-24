@@ -62,3 +62,7 @@ logs/
 .DS_Store
 Desktop.ini
 ehthumbs.db
+
+# --- SQLite Databases ---
+*.db
+cura_local.db

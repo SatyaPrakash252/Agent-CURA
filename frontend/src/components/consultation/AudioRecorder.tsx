@@ -11,6 +11,7 @@ interface AudioRecorderProps {
   onTranscriptChunk: (chunk: TranscriptChunk) => void;
   isRecording: boolean;
   onToggleRecording: () => void;
+  language?: string;
 }
 
 function Waveform({ data, active }: { data: number[]; active: boolean }) {
@@ -57,10 +58,11 @@ function Waveform({ data, active }: { data: number[]; active: boolean }) {
   return <canvas ref={ref} width={640} height={64} className="w-full h-16" />;
 }
 
-export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk, isRecording, onToggleRecording }: AudioRecorderProps) {
+export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk, isRecording, onToggleRecording, language }: AudioRecorderProps) {
   const { status, sendAudio, sendControl, connect, disconnect } = useWebSocket({
     sessionId: isRecording ? sessionId : null,
     onTranscriptChunk: onTranscriptChunk,
+    language: language,
   });
 
   const onChunk = useCallback((d: ArrayBuffer) => { if (status === 'connected') sendAudio(d); }, [status, sendAudio]);

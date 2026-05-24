@@ -10,11 +10,18 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from app.agents.orchestrator import Orchestrator
-from app.models.database import get_consultation, get_dashboard_stats, get_recent_consultations
+from app.models.database import (
+    get_consultation,
+    get_dashboard_stats,
+    get_recent_consultations,
+    get_patient,
+    create_patient,
+)
 from app.models.schemas import (
     ConsultationFinalizeRequest,
     ConsultationResult,
     ConsultationStartRequest,
+    PatientCreate,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,6 +89,20 @@ async def finalize_consultation(
     )
 
     try:
+        # Create or update patient details if provided
+        p_record = await get_patient(request.patient_id)
+        if p_record is None or request.patient_name:
+            patient_data = PatientCreate(
+                patient_id=request.patient_id,
+                name=request.patient_name or (p_record.get("name") if p_record else f"Patient {request.patient_id}"),
+                age=request.patient_age if request.patient_age is not None else (p_record.get("age") if p_record else 35),
+                gender=request.patient_gender or (p_record.get("gender") if p_record else "Unknown"),
+                contact=request.patient_contact or (p_record.get("contact") if p_record else "N/A"),
+                notes=request.patient_notes or (p_record.get("notes") if p_record else "Auto-registered/updated during finalize."),
+            )
+            await create_patient(patient_data)
+            logger.info("Auto-created/updated patient record for %s inside finalize", request.patient_id)
+
         orchestrator = Orchestrator()
         result = await orchestrator.process_consultation(
             transcript=request.transcript,

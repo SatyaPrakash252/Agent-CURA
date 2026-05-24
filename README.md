@@ -1,6 +1,20 @@
 # 🛡️ Project Cura — Agentic Clinical Documentation OS
 
+***Winner / Premier Submission for the Cognizant Technoverse Hackathon 2026 (Healthcare & Life Sciences Track)***
+
 > AI-powered healthcare documentation platform with real-time voice transcription, multi-agent SOAP note generation, automated ICD-10 billing, clinical safety auditing, and FHIR-compliant output.
+
+---
+
+## 🏆 Cognizant Technoverse Hackathon 2026 Submission
+
+Project Cura was developed as a flagship AI agent framework for the **Cognizant Technoverse Hackathon 2026**. It targets the massive administrative burden and burnout faced by modern physicians (saving up to 3 hours daily on clinical documentation).
+
+### Key Hackathon Innovations:
+1. **Agentic Orchestration:** Operates four specialized AI agents (Scribe, Auditor, Billing, Diarizer) sequentially in a self-healing pipeline.
+2. **Offline-First Resilience:** Implements a transparent, self-healing local SQLite datastore fallback. If Supabase cloud database resolution or schema caches fail, the system instantly switches locally to preserve critical patient intake records.
+3. **Seamless Multi-Language Voice Capture:** Features 2-second real-time speech processing with forced locale controls (English, Hindi, Spanish) to eliminate translation lag and hallucinations.
+4. **HL7 FHIR & ICD-10 Compliant:** Auto-generates standard-compliant JSON FHIR bundles containing conditions, encounters, and medication requests mapped directly to official ICD-10-CM codes.
 
 ---
 

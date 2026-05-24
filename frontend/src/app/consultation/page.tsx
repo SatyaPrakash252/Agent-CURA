@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import AudioRecorder from '../../components/consultation/AudioRecorder';
 import LiveTranscript from '../../components/consultation/LiveTranscript';
 import SpeakerLabels from '../../components/consultation/SpeakerLabels';
@@ -35,6 +35,32 @@ export default function ConsultationPage() {
   const segmentCounterRef = useRef(0);
   const { toasts, dismissToast, success: toastSuccess, error: toastError } = useToast();
 
+  // Patient Registration Details Mode & Fields
+  const [patientMode, setPatientMode] = useState<'select' | 'new'>('new');
+  const [existingPatients, setExistingPatients] = useState<any[]>([]);
+  const [patientName, setPatientName] = useState('');
+  const [patientAge, setPatientAge] = useState('');
+  const [patientGender, setPatientGender] = useState('Unknown');
+  const [patientContact, setPatientContact] = useState('');
+  const [patientNotes, setPatientNotes] = useState('');
+  const [activeLanguage, setActiveLanguage] = useState('auto');
+
+  const fetchExistingPatients = async () => {
+    try {
+      const token = localStorage.getItem('cura_token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_V1}/patients?limit=100`, { headers });
+      if (res.ok) {
+        setExistingPatients(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load patients list:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchExistingPatients();
+  }, []);
 
   const genSessionId = () => `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -57,10 +83,17 @@ export default function ConsultationPage() {
     setSessionId(sid);
     setIsRecording(true);
     // If starting a brand new consultation after a previous finalized one,
-    // clear the segments and generate a new Patient ID automatically.
+    // clear the segments and generate a new Patient ID automatically if in 'new' mode.
     if (result) {
       setSegments([]);
-      setPatientId(genPatientId());
+      if (patientMode === 'new') {
+        setPatientId(genPatientId());
+        setPatientName('');
+        setPatientAge('');
+        setPatientGender('Unknown');
+        setPatientContact('');
+        setPatientNotes('');
+      }
     }
     setResult(null);
     setView('record');
@@ -76,7 +109,14 @@ export default function ConsultationPage() {
     setSegments([]);
     setResult(null);
     setSessionId('');
-    setPatientId(genPatientId());
+    if (patientMode === 'new') {
+      setPatientId(genPatientId());
+      setPatientName('');
+      setPatientAge('');
+      setPatientGender('Unknown');
+      setPatientContact('');
+      setPatientNotes('');
+    }
     setView('record');
     segmentCounterRef.current = 0;
   };
@@ -116,6 +156,11 @@ export default function ConsultationPage() {
           patient_id: patientId,
           transcript,
           speaker_segments: segments,
+          patient_name: patientMode === 'new' ? patientName : undefined,
+          patient_age: patientMode === 'new' && patientAge ? parseInt(patientAge) : undefined,
+          patient_gender: patientMode === 'new' ? patientGender : undefined,
+          patient_contact: patientMode === 'new' ? patientContact : undefined,
+          patient_notes: patientMode === 'new' ? patientNotes : undefined,
         }),
       });
 
@@ -125,6 +170,8 @@ export default function ConsultationPage() {
         const data = await res.json();
         setResult(data);
         toastSuccess('Consultation finalized successfully!');
+        // Refresh local listings
+        fetchExistingPatients();
       } else {
         const errorText = await res.text();
         console.error('Finalize error:', res.status, errorText);
@@ -182,24 +229,181 @@ export default function ConsultationPage() {
       {/* ── RECORDING VIEW ── */}
       {view === 'record' && (
         <div className="max-w-3xl mx-auto space-y-4">
-          {/* Patient ID */}
-          <div className="flex items-center gap-3 surface px-4 py-3">
-            <label className="label whitespace-nowrap">Patient</label>
-            <input type="text" value={patientId} onChange={(e) => setPatientId(e.target.value)} disabled={isRecording}
-              className="input flex-1" placeholder="PAT-XXXX" />
+          {/* Patient Selection & Registration Form */}
+          <div className="surface p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-3">
+              <span className="text-[12.5px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Patient Information</span>
+              <div className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] rounded-md p-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setPatientMode('new'); setPatientId(genPatientId()); }}
+                  disabled={isRecording}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-all duration-150 ${
+                    patientMode === 'new' ? 'bg-[#6366f1] text-white shadow-sm' : 'text-[#71717a] hover:text-white'
+                  }`}
+                >
+                  New Patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPatientMode('select'); fetchExistingPatients(); }}
+                  disabled={isRecording}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-all duration-150 ${
+                    patientMode === 'select' ? 'bg-[#6366f1] text-white shadow-sm' : 'text-[#71717a] hover:text-white'
+                  }`}
+                >
+                  Choose Registered
+                </button>
+              </div>
+            </div>
+
+            {patientMode === 'select' ? (
+              <div className="space-y-1.5 animate-in">
+                <label className="text-[11.5px] text-[var(--text-muted)] font-bold uppercase tracking-wider block">Select Active Patient Context</label>
+                {existingPatients.length === 0 ? (
+                  <p className="text-[12.5px] text-[var(--text-muted)] py-1.5">No patients registered in database. Toggle "New Patient" above.</p>
+                ) : (
+                  <select
+                    value={patientId}
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setPatientId(pid);
+                      const matched = existingPatients.find(p => p.patient_id === pid);
+                      if (matched) {
+                        toastSuccess(`Loaded context for ${matched.name || pid}`);
+                      }
+                    }}
+                    disabled={isRecording}
+                    className="input w-full block bg-[var(--bg-base)] border-[var(--border)]"
+                  >
+                    <option value="">-- Choose patient record --</option>
+                    {existingPatients.map((p) => (
+                      <option key={p.patient_id} value={p.patient_id}>
+                        {p.patient_id} &bull; {p.name || 'Anonymous'} &bull; {p.gender || 'Unknown'} ({p.age ? `${p.age} yrs` : 'Age N/A'})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3.5 animate-in">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Patient ID *</label>
+                    <input
+                      type="text"
+                      value={patientId}
+                      onChange={(e) => setPatientId(e.target.value)}
+                      disabled={isRecording}
+                      className="input w-full bg-[var(--bg-base)]"
+                      placeholder="PAT-XXXX"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                      disabled={isRecording}
+                      className="input w-full bg-[var(--bg-base)]"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Age</label>
+                    <input
+                      type="number"
+                      value={patientAge}
+                      onChange={(e) => setPatientAge(e.target.value)}
+                      disabled={isRecording}
+                      className="input w-full bg-[var(--bg-base)]"
+                      placeholder="35"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Gender</label>
+                    <select
+                      value={patientGender}
+                      onChange={(e) => setPatientGender(e.target.value)}
+                      disabled={isRecording}
+                      className="input w-full bg-[var(--bg-base)]"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Unknown">Unknown</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Contact Details</label>
+                    <input
+                      type="text"
+                      value={patientContact}
+                      onChange={(e) => setPatientContact(e.target.value)}
+                      disabled={isRecording}
+                      className="input w-full bg-[var(--bg-base)]"
+                      placeholder="Phone or email"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-wider block mb-1">Clinical Intake Notes</label>
+                  <textarea
+                    value={patientNotes}
+                    onChange={(e) => setPatientNotes(e.target.value)}
+                    disabled={isRecording}
+                    className="input w-full h-14 min-h-[50px] max-h-[100px] resize-y py-2 bg-[var(--bg-base)]"
+                    placeholder="Enter basic medical complaints, symptoms, or past history..."
+                  />
+                </div>
+              </div>
+            )}
+
             {sessionId && (
-              <span className="text-[11.5px] text-[#52525b] font-mono truncate max-w-[140px]">{sessionId.slice(0, 20)}…</span>
+              <div className="flex items-center justify-between text-[10.5px] text-[#52525b] font-mono border-t border-white/[0.03] pt-3 mt-1">
+                <span>Intake Target: <span className="text-indigo-400 font-semibold">{patientId}</span></span>
+                <span>Active Session: <span className="text-[var(--text-secondary)]">{sessionId.slice(0, 20)}…</span></span>
+              </div>
             )}
           </div>
 
           {/* Audio Recorder — REAL: connects to WebSocket, streams PCM to backend */}
-          <div className="surface p-5">
+          <div className="surface p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-3">
+              <div>
+                <span className="text-[12.5px] text-[var(--text-muted)] font-bold uppercase tracking-wider block">Live Capture</span>
+                <span className="text-[11px] text-[var(--text-secondary)] mt-0.5 block">Record doctor-patient clinical session</span>
+              </div>
+              
+              {/* Force Language Selection Dropdown */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11.5px] text-[#71717a] font-medium hidden sm:inline">Locale:</span>
+                <select
+                  value={activeLanguage}
+                  onChange={(e) => setActiveLanguage(e.target.value)}
+                  disabled={isRecording}
+                  className="input px-2.5 py-1 text-[11.5px] bg-white/[0.03] border border-white/[0.06] rounded-md focus:border-[#6366f1] transition-all cursor-pointer font-medium text-white max-w-[130px]"
+                >
+                  <option value="auto">🌐 Auto-Detect</option>
+                  <option value="en">🇺🇸 English</option>
+                  <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
+                  <option value="es">🇪🇸 Spanish</option>
+                </select>
+              </div>
+            </div>
+
             <AudioRecorder
               sessionId={sessionId || 'pending'}
               patientId={patientId}
               onTranscriptChunk={handleTranscriptChunk}
               isRecording={isRecording}
               onToggleRecording={() => (isRecording ? handleStop() : handleStart())}
+              language={activeLanguage}
             />
           </div>
 

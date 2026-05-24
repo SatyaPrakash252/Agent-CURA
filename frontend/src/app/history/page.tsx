@@ -56,9 +56,29 @@ export default function HistoryPage() {
     setLoading(false);
   };
 
-  // Debounced search
+  // Fetch overall recent consultations across all patients
+  const fetchRecentConsultations = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('cura_token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_V1}/consultation/`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setRecords(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setRecords([]);
+    }
+    setLoading(false);
+  };
+
+  // Debounced search / Autoload recent consultations
   useEffect(() => {
-    if (!search.trim()) { setRecords([]); return; }
+    if (!search.trim()) {
+      fetchRecentConsultations();
+      return;
+    }
     const t = setTimeout(() => fetchHistory(search.trim()), 600);
     return () => clearTimeout(t);
   }, [search]);
@@ -91,13 +111,13 @@ export default function HistoryPage() {
       {/* Results */}
       {loading ? (
         <div className="py-12"><Loader text="Loading history…" /></div>
-      ) : !search ? (
+      ) : !search && records.length === 0 ? (
         <div className="py-16 text-center">
           <svg className="w-8 h-8 text-[#3f3f46] mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-[14.5px] text-[#71717a] font-medium">Consultation History</p>
-          <p className="text-[12.5px] text-[#52525b] mt-1">Enter a Patient ID or click a recent patient to view their consultation history from Supabase.</p>
+          <p className="text-[12.5px] text-[#52525b] mt-1">Enter a Patient ID or click a recent patient to view their consultation history.</p>
         </div>
       ) : records.length === 0 ? (
         <div className="py-12 text-center">
@@ -106,7 +126,11 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-[12.5px] text-[#52525b] font-medium">{records.length} consultation{records.length !== 1 ? 's' : ''} found for {search}</p>
+          <p className="text-[12.5px] text-[#52525b] font-medium">
+            {search
+              ? `${records.length} consultation${records.length !== 1 ? 's' : ''} found for ${search}`
+              : 'Recent clinical consultations across all patients'}
+          </p>
           {records.map((r, i) => {
             const exp = expandedId === r.session_id;
             return (
