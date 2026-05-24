@@ -44,6 +44,7 @@ export default function ConsultationPage() {
   const [patientContact, setPatientContact] = useState('');
   const [patientNotes, setPatientNotes] = useState('');
   const [activeLanguage, setActiveLanguage] = useState('auto');
+  const [activeSpeaker, setActiveSpeaker] = useState<'auto' | 'Doctor' | 'Patient'>('auto');
 
   const fetchExistingPatients = async () => {
     try {
@@ -67,16 +68,20 @@ export default function ConsultationPage() {
   // Called by AudioRecorder when WebSocket delivers a transcript chunk
   const handleTranscriptChunk = useCallback((chunk: TranscriptChunk) => {
     segmentCounterRef.current += 1;
+    let resolvedSpeaker = chunk.speaker || 'Doctor';
+    if (activeSpeaker !== 'auto') {
+      resolvedSpeaker = activeSpeaker;
+    }
     setSegments((prev) => [
       ...prev,
       {
-        speaker: chunk.speaker || 'Doctor',
+        speaker: resolvedSpeaker,
         text: chunk.text,
         start_time: chunk.timestamp,
         end_time: chunk.timestamp + 1,
       },
     ]);
-  }, []);
+  }, [activeSpeaker]);
 
   const handleStart = () => {
     const sid = genSessionId();
@@ -123,6 +128,16 @@ export default function ConsultationPage() {
 
   const handleEditTranscript = (index: number, newText: string) => {
     setSegments((prev) => prev.map((s, i) => (i === index ? { ...s, text: newText } : s)));
+  };
+
+  const handleToggleSpeaker = (index: number) => {
+    setSegments((prev) =>
+      prev.map((s, i) =>
+        i === index
+          ? { ...s, speaker: s.speaker === 'Doctor' ? 'Patient' : 'Doctor' }
+          : s
+      )
+    );
   };
 
   const handleFinalize = async () => {
@@ -431,6 +446,48 @@ export default function ConsultationPage() {
               onToggleRecording={() => (isRecording ? handleStop() : handleStart())}
               language={activeLanguage}
             />
+
+            {/* Active Speaker Override Toggle */}
+            {isRecording && (
+              <div className="flex flex-col items-center gap-2 mt-4 pt-4 border-t border-white/[0.03] animate-in">
+                <span className="text-[10px] font-mono text-[var(--text-muted)] font-bold uppercase tracking-wider">Active Speaker Override</span>
+                <div className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] rounded-xl p-1 backdrop-blur-md">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSpeaker('auto')}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 flex items-center gap-1.5 ${
+                      activeSpeaker === 'auto'
+                        ? 'bg-[#6366f1] text-white shadow-md'
+                        : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.02]'
+                    }`}
+                  >
+                    🤖 Auto-Detect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSpeaker('Doctor')}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 flex items-center gap-1.5 ${
+                      activeSpeaker === 'Doctor'
+                        ? 'bg-[#6366f1] text-white shadow-md'
+                        : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.02]'
+                    }`}
+                  >
+                    👨‍⚕️ Force Doctor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSpeaker('Patient')}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 flex items-center gap-1.5 ${
+                      activeSpeaker === 'Patient'
+                        ? 'bg-emerald-500 text-white shadow-md'
+                        : 'text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.02]'
+                    }`}
+                  >
+                    🤒 Force Patient
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Speaker Labels */}
@@ -444,7 +501,11 @@ export default function ConsultationPage() {
                 <span className="text-[11.5px] text-[#52525b] font-mono">{segments.length} segments</span>
               </div>
               <div className="max-h-[300px] overflow-y-auto">
-                <LiveTranscript segments={segments} onEdit={handleEditTranscript} />
+                <LiveTranscript 
+                  segments={segments} 
+                  onEdit={handleEditTranscript} 
+                  onToggleSpeaker={handleToggleSpeaker} 
+                />
               </div>
             </div>
           )}

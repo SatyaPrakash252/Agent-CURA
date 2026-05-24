@@ -6,6 +6,7 @@ import type { SpeakerSegment } from '../../types';
 interface LiveTranscriptProps {
   segments: SpeakerSegment[];
   onEdit?: (index: number, newText: string) => void;
+  onToggleSpeaker?: (index: number) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -14,7 +15,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s}`;
 }
 
-export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps) {
+export default function LiveTranscript({ segments, onEdit, onToggleSpeaker }: LiveTranscriptProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -74,17 +75,21 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
             key={i}
             className="group flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors duration-150"
           >
-            {/* Speaker label */}
+            {/* Clickable Speaker label button */}
             <div className="flex-shrink-0 pt-px">
-              <span
-                className={`inline-block px-1.5 py-0.5 rounded-md text-[11px] font-medium tracking-wide uppercase ${
+              <button
+                type="button"
+                onClick={() => onToggleSpeaker && onToggleSpeaker(i)}
+                disabled={!onToggleSpeaker}
+                className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide uppercase transition-all duration-150 select-none ${
                   isDoctor
-                    ? 'bg-[#6366f1]/10 text-[#6366f1] border border-[#6366f1]/20'
-                    : 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/20'
-                }`}
+                    ? 'bg-[#6366f1]/15 text-[#6366f1] border border-[#6366f1]/25 hover:bg-[#6366f1]/25'
+                    : 'bg-emerald-400/15 text-emerald-400 border border-emerald-400/25 hover:bg-emerald-400/25'
+                } ${onToggleSpeaker ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}`}
+                title={onToggleSpeaker ? "Click to toggle speaker (Doctor ↔ Patient)" : undefined}
               >
                 {seg.speaker}
-              </span>
+              </button>
             </div>
 
             {/* Text content */}
@@ -109,7 +114,7 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
                   {seg.text}
                 </p>
               )}
-              <span className="text-[11.5px] text-[#444] font-mono mt-0.5 block">
+              <span className="text-[11px] text-[#444] font-mono mt-0.5 block">
                 {formatTime(seg.start_time)}
               </span>
             </div>

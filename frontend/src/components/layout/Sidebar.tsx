@@ -26,7 +26,7 @@ export default function Sidebar() {
   useEffect(() => {
     const checkHealth = async () => {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 10000);
       try {
         const r = await fetch(`${API_V1}/health`, {
           signal: controller.signal,
