@@ -78,7 +78,7 @@ export default function PatientsPage() {
           ) : (
             <div className="space-y-2">
               {history.map((c: any, i: number) => (
-                <div key={i} className="p-3 rounded-md bg-[#09090b] border border-white/[0.04] space-y-1.5">
+                <div key={i} className="p-3 rounded-md bg-[var(--bg-base)] border border-[var(--border)] space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11.5px] text-[#52525b] font-mono">{(c.created_at || '—').slice(0, 16).replace('T', ' ')}</span>
                     <Badge variant={c.confidence_score >= 80 ? 'success' : 'warning'} label={`${c.confidence_score || 0}%`} size="sm" />

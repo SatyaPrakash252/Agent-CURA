@@ -108,7 +108,7 @@ export default function AudioRecorder({ sessionId, onTranscriptChunk, isRecordin
 
       {/* Waveform */}
       <div className={`rounded-lg border p-3 transition-colors duration-200 ${
-        isRecording ? 'border-[#6366f1]/20 bg-[#111113]' : 'border-white/[0.04] bg-[#0d0d0f]'
+        isRecording ? 'border-[#6366f1]/20 bg-[var(--bg-surface)]' : 'border-[var(--border)] bg-[var(--bg-raised)]'
       }`}>
         <Waveform data={waveformData} active={isRecording} />
       </div>

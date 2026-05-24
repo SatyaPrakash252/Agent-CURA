@@ -34,26 +34,26 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
   };
 
   return (
-    <div className="animate-in rounded-lg border border-white/[0.06] bg-[#111113] overflow-hidden">
+    <div className="animate-in rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
-          <span className="text-[14.5px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-[var(--text-primary)] tracking-tight">
             FHIR Actions
           </span>
           {isDemo && (
-            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[var(--text-muted)] bg-[var(--bg-hover)] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
         </div>
-        <span className="text-[11.5px] text-[#444]">
+        <span className="text-[11.5px] text-[var(--text-muted)]">
           {data.length} intent{data.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Intent rows */}
-      <div className="divide-y divide-white/[0.06]">
+      <div className="divide-y divide-[var(--border)]">
         {data.map((intent, i) => {
           const meta = TYPE_META[intent.type] || { icon: '◻', label: intent.type };
           const done = transmitted.has(i);
@@ -61,7 +61,7 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
           return (
             <div
               key={i}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-[#161618] transition-colors duration-150"
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-150"
             >
               {/* Icon */}
               <span className="flex-shrink-0 w-7 h-7 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[13px] flex items-center justify-center">
@@ -70,7 +70,7 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <p className="text-[13.5px] font-medium text-white truncate">
+                <p className="text-[13.5px] font-medium text-[var(--text-primary)] truncate">
                   {intent.item}
                 </p>
                 <div className="flex items-center gap-2 mt-1">

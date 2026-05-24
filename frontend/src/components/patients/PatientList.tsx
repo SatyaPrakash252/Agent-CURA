@@ -51,7 +51,7 @@ export default function PatientList({
             type="text"
             placeholder="Search patients…"
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#111113] border border-white/[0.06] text-[13.5px] text-white placeholder-[#555] outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
+            className="w-full pl-8 pr-3 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] text-[13.5px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
           />
         </div>
         <button
@@ -70,11 +70,11 @@ export default function PatientList({
         </div>
       ) : (
         /* Table */
-        <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+        <div className="rounded-lg border border-[var(--border)] overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-[#111113]">
-                <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
+              <tr className="bg-[var(--bg-raised)]">
+                <th className="text-left text-[11.5px] font-medium text-[var(--text-muted)] uppercase tracking-wider px-3 py-2">
                   ID
                 </th>
                 <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">

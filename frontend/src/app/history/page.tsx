@@ -110,9 +110,9 @@ export default function HistoryPage() {
           {records.map((r, i) => {
             const exp = expandedId === r.session_id;
             return (
-              <div key={r.session_id || i} className="rounded-lg bg-[#111113] border border-white/[0.06] overflow-hidden">
+              <div key={r.session_id || i} className="rounded-lg bg-[var(--bg-surface)] border border-[var(--border)] overflow-hidden">
                 <button onClick={() => setExpandedId(exp ? null : r.session_id)}
-                  className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-hover)]/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <span className="text-[11.5px] text-[#52525b] font-mono">{r.created_at?.slice(0, 16)?.replace('T', ' ') || '—'}</span>
                     <Badge variant="info" label={r.patient_id} size="sm" />
@@ -129,7 +129,7 @@ export default function HistoryPage() {
                 </button>
 
                 {exp && (
-                  <div className="px-4 pb-4 pt-2 border-t border-white/[0.04] space-y-3 animate-in">
+                  <div className="px-4 pb-4 pt-2 border-t border-[var(--border)] space-y-3 animate-in">
                     {[
                       { key: 'Subjective', val: r.soap_subjective },
                       { key: 'Objective', val: r.soap_objective },

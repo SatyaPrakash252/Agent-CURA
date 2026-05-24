@@ -21,9 +21,9 @@ export default function Card({ children, className = "", hoverable, padding = "m
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       className={`
-        rounded-lg bg-[#111113] border border-white/[0.06]
+        rounded-lg bg-[var(--bg-surface)] border border-[var(--border)]
         ${pad[padding]}
-        ${hoverable ? 'cursor-pointer transition-colors duration-150 hover:bg-[#161618] hover:border-white/[0.1]' : ''}
+        ${hoverable ? 'cursor-pointer transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:border-[var(--border-hover)]' : ''}
         ${className}
       `}
     >

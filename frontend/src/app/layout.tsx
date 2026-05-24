@@ -27,7 +27,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="bg-[#09090b] text-[#ececec] antialiased overflow-x-hidden">
+      <body className="bg-[var(--bg-base)] text-[var(--text-primary)] antialiased overflow-x-hidden transition-colors duration-200">
         <AuthWrapper>
           <div className="flex min-h-screen">
             <Sidebar />

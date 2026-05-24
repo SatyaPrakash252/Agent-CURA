@@ -53,23 +53,23 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <p className="text-[13.5px] font-semibold text-white">Clinical Audit Passed</p>
-          <p className="text-[12.5px] text-[#a1a1aa] mt-0.5">No contraindications, medication discrepancies, or safety warnings detected in this consultation.</p>
+          <p className="text-[13.5px] font-semibold text-[var(--text-primary)]">Clinical Audit Passed</p>
+          <p className="text-[12.5px] text-[var(--text-secondary)] mt-0.5">No contraindications, medication discrepancies, or safety warnings detected in this consultation.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="animate-in rounded-lg border border-white/[0.06] bg-[#111113] overflow-hidden">
+    <div className="animate-in rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
-          <span className="text-[14.5px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-[var(--text-primary)] tracking-tight">
             Safety Alerts
           </span>
           {isDemo && flags.length === 0 && (
-            <span className="text-[11px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11px] font-medium text-[var(--text-muted)] bg-[var(--bg-hover)] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
@@ -82,14 +82,14 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
       </div>
 
       {/* Alert rows */}
-      <div className="divide-y divide-white/[0.06]">
+      <div className="divide-y divide-[var(--border)]">
         {data.map((flag, i) => {
           const style = LEVEL_STYLES[flag.level] || LEVEL_STYLES.INFO;
 
           return (
             <div
               key={i}
-              className={`flex items-start gap-3 px-4 py-3 border-l-2 ${style.border} ${style.bg} hover:bg-[#161618] transition-colors duration-150`}
+              className={`flex items-start gap-3 px-4 py-3 border-l-2 ${style.border} ${style.bg} hover:bg-[var(--bg-hover)] transition-colors duration-150`}
             >
               {/* Severity icon */}
               <div className="flex-shrink-0 mt-0.5">
@@ -120,7 +120,7 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
                     </span>
                   )}
                 </div>
-                <p className="text-[13.5px] leading-relaxed text-[#888]">
+                <p className="text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
                   {flag.message}
                 </p>
               </div>

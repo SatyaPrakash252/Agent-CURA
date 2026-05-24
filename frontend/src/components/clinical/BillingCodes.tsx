@@ -19,28 +19,28 @@ export default function BillingCodes({ codes }: BillingCodesProps) {
   const data = isDemo ? DEMO_CODES : codes;
 
   return (
-    <div className="animate-in rounded-lg border border-white/[0.06] bg-[#111113] overflow-hidden">
+    <div className="animate-in rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
-          <span className="text-[14.5px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-[var(--text-primary)] tracking-tight">
             Billing Codes
           </span>
           {isDemo && (
-            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[var(--text-muted)] bg-[var(--bg-hover)] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
         </div>
-        <span className="text-[11.5px] text-[#444]">
+        <span className="text-[11.5px] text-[var(--text-muted)]">
           {data.length} code{data.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Table */}
-      <div className="divide-y divide-white/[0.06]">
+      <div className="divide-y divide-[var(--border)]">
         {/* Column headers */}
-        <div className="grid grid-cols-[80px_1fr_100px] px-4 py-2 text-[11px] font-medium text-[#444] uppercase tracking-wider">
+        <div className="grid grid-cols-[80px_1fr_100px] px-4 py-2 text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider">
           <span>Code</span>
           <span>Description</span>
           <span className="text-right">Type</span>
@@ -50,12 +50,12 @@ export default function BillingCodes({ codes }: BillingCodesProps) {
         {data.map((item, i) => (
           <div
             key={i}
-            className="grid grid-cols-[80px_1fr_100px] items-center px-4 py-2.5 hover:bg-[#161618] transition-colors duration-150"
+            className="grid grid-cols-[80px_1fr_100px] items-center px-4 py-2.5 hover:bg-[var(--bg-hover)] transition-colors duration-150"
           >
             <span className="font-mono text-[13.5px] font-semibold text-[#6366f1]">
               {item.code}
             </span>
-            <span className="text-[13.5px] text-[#888] truncate pr-3">
+            <span className="text-[13.5px] text-[var(--text-secondary)] truncate pr-3">
               {item.description}
             </span>
             <span className="text-right">

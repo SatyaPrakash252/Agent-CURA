@@ -22,8 +22,8 @@ export default function PatientCard({ patient, onClick }: PatientCardProps) {
   return (
     <div
       onClick={onClick}
-      className={`bg-[#111113] border border-white/[0.06] rounded-lg p-3 transition-colors duration-150 ${
-        onClick ? 'cursor-pointer hover:bg-[#161618]' : ''
+      className={`bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg p-3 transition-colors duration-150 ${
+        onClick ? 'cursor-pointer hover:bg-[var(--bg-hover)]' : ''
       }`}
     >
       <div className="flex items-center gap-3">

@@ -53,7 +53,7 @@ export default function Sidebar() {
 
   return (
     <>
-      <button onClick={() => setOpen(!open)} className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-md bg-[#111113] border border-white/[0.06] text-[#71717a]">
+      <button onClick={() => setOpen(!open)} className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-md bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-secondary)]">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           {open ? <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />}
         </svg>

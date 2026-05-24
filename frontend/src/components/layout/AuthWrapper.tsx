@@ -14,7 +14,7 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#09090b]">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-base)] text-[var(--text-primary)] transition-colors duration-200">
         <Loader variant="ring" text="Loading..." />
       </div>
     );

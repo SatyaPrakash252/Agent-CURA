@@ -56,15 +56,15 @@ export default function SOAPNote({ soap, confidenceScore, isLoading }: SOAPNoteP
     : null;
 
   return (
-    <div className="animate-in rounded-lg border border-white/[0.06] bg-[#111113] overflow-hidden">
+    <div className="animate-in rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-2">
-          <span className="text-[14.5px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-[var(--text-primary)] tracking-tight">
             SOAP Note
           </span>
           {isDemo && (
-            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[var(--text-muted)] bg-[var(--bg-hover)] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
@@ -85,11 +85,11 @@ export default function SOAPNote({ soap, confidenceScore, isLoading }: SOAPNoteP
       </div>
 
       {/* Sections grid */}
-      <div className="grid grid-cols-1 divide-y divide-white/[0.06]">
+      <div className="grid grid-cols-1 divide-y divide-[var(--border)]">
         {SECTIONS.map((sec) => {
           const content = data[sec.key] || '';
           return (
-            <div key={sec.key} className="group relative px-4 py-3 hover:bg-[#161618] transition-colors duration-150">
+            <div key={sec.key} className="group relative px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors duration-150">
               <div className="flex items-start gap-3">
                 {/* Letter badge */}
                 <span className="flex-shrink-0 w-6 h-6 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[12.5px] font-bold flex items-center justify-center mt-0.5">
@@ -97,13 +97,13 @@ export default function SOAPNote({ soap, confidenceScore, isLoading }: SOAPNoteP
                 </span>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11.5px] font-medium text-[#555] uppercase tracking-wider mb-1">
+                  <p className="text-[11.5px] font-medium text-[var(--text-muted)] uppercase tracking-wider mb-1">
                     {sec.full}
                   </p>
                   {isLoading ? (
                     <SkeletonBlock />
                   ) : (
-                    <p className="text-[13.5px] leading-relaxed text-[#888] whitespace-pre-wrap">
+                    <p className="text-[13.5px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap">
                       {content || 'No data available'}
                     </p>
                   )}
