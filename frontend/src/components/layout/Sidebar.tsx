@@ -24,6 +24,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
 
   useEffect(() => {
+    let consecutiveFailures = 0;
     const checkHealth = async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -33,11 +34,22 @@ export default function Sidebar() {
           cache: 'no-store',
         });
         clearTimeout(timeout);
-        if (r.ok) { setHealth(await r.json()); setBackendOnline(true); }
-        else { setBackendOnline(false); }
+        if (r.ok) {
+          setHealth(await r.json());
+          setBackendOnline(true);
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= 3) {
+            setBackendOnline(false);
+          }
+        }
       } catch {
         clearTimeout(timeout);
-        setBackendOnline(false);
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= 3) {
+          setBackendOnline(false);
+        }
       }
     };
     // Initial check + retry after 3s (backend may still be starting)
