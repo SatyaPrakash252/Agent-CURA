@@ -7,6 +7,8 @@ interface User {
   username: string;
   full_name: string;
   role: string;
+  expertise?: string;
+  credentials?: string;
 }
 
 interface AuthState {
@@ -65,6 +67,8 @@ export function useAuth() {
             username: data.username,
             full_name: data.full_name,
             role: data.role,
+            expertise: data.expertise,
+            credentials: data.credentials,
           },
           token: data.access_token,
           loading: false,
@@ -73,6 +77,50 @@ export function useAuth() {
       } else {
         const err = await res.json().catch(() => ({ detail: 'Login failed' }));
         return err.detail || 'Invalid credentials';
+      }
+    } catch {
+      return 'Network error. Is the backend running?';
+    }
+  }, []);
+
+  const signup = useCallback(async (
+    username: string, 
+    password: string, 
+    fullName: string, 
+    expertise: string, 
+    credentials: string
+  ): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_V1}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          username, 
+          password, 
+          full_name: fullName, 
+          expertise, 
+          credentials 
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('cura_token', data.access_token);
+        setState({
+          user: {
+            username: data.username,
+            full_name: data.full_name,
+            role: data.role,
+            expertise: data.expertise,
+            credentials: data.credentials,
+          },
+          token: data.access_token,
+          loading: false,
+        });
+        return null; // no error
+      } else {
+        const err = await res.json().catch(() => ({ detail: 'Registration failed' }));
+        return err.detail || 'Failed to register doctor';
       }
     } catch {
       return 'Network error. Is the backend running?';
@@ -97,6 +145,7 @@ export function useAuth() {
     loading: state.loading,
     isAuthenticated: !!state.user,
     login,
+    signup,
     logout,
     getAuthHeaders,
   };

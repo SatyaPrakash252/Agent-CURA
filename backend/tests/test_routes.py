@@ -89,6 +89,34 @@ class TestAuthEndpoints:
         assert data["username"] == "admin"
 
     @patch("app.api.routes_auth.get_user_by_username", new_callable=AsyncMock)
+    @patch("app.api.routes_auth.create_user", new_callable=AsyncMock)
+    @patch("app.api.routes_auth.update_user_last_login", new_callable=AsyncMock)
+    @patch("app.api.routes_auth.log_audit", new_callable=AsyncMock)
+    def test_signup_success(self, mock_audit, mock_update, mock_create, mock_get_user, client):
+        mock_get_user.return_value = None
+        mock_create.return_value = {
+            "username": "newdoctor",
+            "full_name": "Dr. House",
+            "role": "doctor",
+            "expertise": "Diagnostic Medicine",
+            "credentials": "NPI-55555",
+        }
+
+        response = client.post("/api/v1/auth/signup", json={
+            "username": "newdoctor",
+            "password": "doctorpassword",
+            "full_name": "Dr. House",
+            "expertise": "Diagnostic Medicine",
+            "credentials": "NPI-55555",
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert data["username"] == "newdoctor"
+        assert data["expertise"] == "Diagnostic Medicine"
+        assert data["credentials"] == "NPI-55555"
+
+    @patch("app.api.routes_auth.get_user_by_username", new_callable=AsyncMock)
     def test_login_invalid_password(self, mock_get_user, client):
         from app.middleware.auth import hash_password
         mock_get_user.return_value = {

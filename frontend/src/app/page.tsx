@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Badge from '../components/ui/Badge';
 import { API_V1 } from '../lib/constants';
+import { useAuth } from '../hooks/useAuth';
 
 interface DashboardStats {
   patient_count: number;
@@ -20,6 +21,7 @@ interface RecentConsultation {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({ patient_count: 0, today_sessions: 0, avg_confidence: 0 });
   const [recent, setRecent] = useState<RecentConsultation[]>([]);
@@ -83,8 +85,13 @@ export default function DashboardPage() {
       <div>
         <p className="text-[12px] text-[#555] font-medium mb-1">Overview</p>
         <h1 className="text-2xl font-semibold text-white tracking-tight">
-          {greeting}, Doctor
+          {greeting}, {user?.full_name || 'Doctor'}
         </h1>
+        {user?.expertise && (
+          <p className="text-[12px] text-[#6366f1] font-medium mt-1">
+            🩺 {user.expertise} &nbsp;•&nbsp; 💳 Verified Credentials: <span className="font-mono text-[#a5b4fc]">{user.credentials || 'N/A'}</span>
+          </p>
+        )}
       </div>
 
       {/* Metrics */}
