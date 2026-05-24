@@ -53,8 +53,8 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <p className="text-[12px] font-semibold text-white">Clinical Audit Passed</p>
-          <p className="text-[11px] text-[#a1a1aa] mt-0.5">No contraindications, medication discrepancies, or safety warnings detected in this consultation.</p>
+          <p className="text-[13.5px] font-semibold text-white">Clinical Audit Passed</p>
+          <p className="text-[12.5px] text-[#a1a1aa] mt-0.5">No contraindications, medication discrepancies, or safety warnings detected in this consultation.</p>
         </div>
       </div>
     );
@@ -65,11 +65,11 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-white tracking-tight">
             Safety Alerts
           </span>
           {isDemo && flags.length === 0 && (
-            <span className="text-[10px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
@@ -111,16 +111,16 @@ export default function SafetyAlerts({ flags, isDemo = false }: SafetyAlertsProp
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${style.badge}`}>
+                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-md ${style.badge}`}>
                     {style.label}
                   </span>
                   {flag.requires_review && (
-                    <span className="text-[10px] font-semibold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-md">
+                    <span className="text-[11px] font-semibold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-md">
                       MD Review
                     </span>
                   )}
                 </div>
-                <p className="text-[12px] leading-relaxed text-[#888]">
+                <p className="text-[13.5px] leading-relaxed text-[#888]">
                   {flag.message}
                 </p>
               </div>

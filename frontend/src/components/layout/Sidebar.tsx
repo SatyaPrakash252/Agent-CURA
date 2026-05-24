@@ -61,68 +61,67 @@ export default function Sidebar() {
 
       {open && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setOpen(false)} />}
 
-      <aside className={`fixed top-0 left-0 z-40 h-screen w-56 border-r border-white/[0.06] bg-[#09090b] flex flex-col transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`fixed top-0 left-0 z-40 h-screen w-56 border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} transition-colors duration-200`}>
         <div className="px-5 py-5 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-md bg-[#6366f1] flex items-center justify-center">
+          <div className="w-7 h-7 rounded-md bg-[#6366f1] flex items-center justify-center shadow-sm">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
             </svg>
           </div>
           <div>
-            <p className="text-[13px] font-semibold text-white tracking-tight">Project Cura</p>
-            <p className="text-[10px] text-[#52525b] leading-none">Clinical AI</p>
+            <p className="text-[14.5px] font-bold text-[var(--text-primary)] tracking-tight">Project Cura</p>
+            <p className="text-[11px] text-[var(--text-muted)] leading-none mt-0.5">Clinical AI</p>
           </div>
         </div>
 
-        <nav className="flex-1 px-2.5 space-y-0.5 mt-2">
+        <nav className="flex-1 px-2.5 space-y-1 mt-3">
           {nav.map((item) => {
             const active = path === item.href;
             return (
               <Link key={item.href} href={item.href} onClick={() => setOpen(false)}
-                className={`flex items-center gap-2.5 px-3 py-[7px] rounded-md text-[13px] transition-colors duration-150 ${
-                  active ? 'bg-white/[0.07] text-white font-medium' : 'text-[#71717a] hover:text-[#a1a1aa] hover:bg-white/[0.03]'}`}>
-                <svg className="w-[15px] h-[15px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                className={`flex items-center gap-3 px-3 py-[9px] rounded-md text-[14.5px] transition-all duration-150 ${
+                  active ? 'bg-[var(--bg-hover)] text-[var(--text-primary)] font-semibold shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]/40'}`}>
+                <svg className="w-[17px] h-[17px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   {item.icon}
                 </svg>
                 <span>{item.label}</span>
-                <kbd className={`ml-auto text-[10px] font-mono px-1 py-px rounded ${active ? 'text-[#52525b]' : 'text-[#3f3f46]'}`}>{item.shortcut}</kbd>
               </Link>
             );
           })}
         </nav>
 
         {/* Service status — REAL indicators */}
-        <div className="px-3.5 py-4 border-t border-white/[0.04] space-y-2">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[9px] text-[#52525b] font-semibold uppercase tracking-wider">Services</span>
-            <span className={`text-[8px] font-mono px-1 py-px rounded ${
-              backendOnline ? 'text-[#34d399] bg-[#34d399]/10' : 'text-[#f87171] bg-[#f87171]/10'
+        <div className="px-4 py-4 border-t border-[var(--border)] space-y-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Services</span>
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+              backendOnline ? 'text-[#10b981] bg-[#10b981]/10 border border-[#10b981]/15' : 'text-[#f87171] bg-[#f87171]/10 border border-[#f87171]/15'
             }`}>{backendOnline ? 'live' : 'offline'}</span>
           </div>
           {services.map((s) => (
-            <div key={s.k} className="flex items-center gap-2 text-[11px]">
-              <span className={`w-[5px] h-[5px] rounded-full ${s.ok ? 'bg-[#34d399]' : 'bg-[#f87171]/50'}`} />
-              <span className="text-[#71717a]">{s.k}</span>
-              <span className={`ml-auto font-mono text-[10px] ${s.ok ? 'text-[#34d399]' : 'text-[#f87171]/50'}`}>
+            <div key={s.k} className="flex items-center gap-2.5 text-[12.5px]">
+              <span className={`w-[6px] h-[6px] rounded-full ${s.ok ? 'bg-[#10b981]' : 'bg-[#f87171]/40'}`} />
+              <span className="text-[var(--text-secondary)]">{s.k}</span>
+              <span className={`ml-auto font-mono text-[11px] ${s.ok ? 'text-[#10b981]' : 'text-[#f87171]/40'}`}>
                 {s.ok ? 'ok' : '—'}
               </span>
             </div>
           ))}
           {backendOnline && health && (
-            <p className="text-[9px] text-[#3f3f46] font-mono mt-1">v{health.version}</p>
+            <p className="text-[10px] text-[var(--text-muted)] font-mono mt-1.5">v{health.version}</p>
           )}
         </div>
 
         {/* User & Logout */}
-        <div className="px-3.5 py-3 border-t border-white/[0.04]">
+        <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--bg-raised)]">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[11px] text-[#a1a1aa] font-medium">{user?.full_name || user?.username || 'User'}</p>
-              <p className="text-[9px] text-[#52525b] font-mono">{user?.role || 'doctor'}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] text-[var(--text-primary)] font-semibold truncate" title={user?.full_name || user?.username}>{user?.full_name || user?.username || 'User'}</p>
+              <p className="text-[10px] text-[var(--text-muted)] font-mono truncate">{user?.role || 'doctor'}</p>
             </div>
             <button
               onClick={logout}
-              className="text-[10px] text-[#71717a] hover:text-[#f87171] transition-colors px-2 py-1 rounded hover:bg-white/[0.03]"
+              className="text-[11px] text-[var(--text-muted)] hover:text-[#f87171] hover:bg-[#f87171]/5 transition-all px-2.5 py-1.5 rounded ml-2 flex-shrink-0"
               title="Sign out"
             >
               Sign out

@@ -97,7 +97,7 @@ def transcribe_audio(
         audio_data = audio_data / max_val
 
     transcribe_kwargs: dict = {
-        "beam_size": 1,
+        "beam_size": 5,
         "vad_filter": True,
         "vad_parameters": {
             "min_silence_duration_ms": 300,

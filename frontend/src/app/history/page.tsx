@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Badge from '../../components/ui/Badge';
 import Loader from '../../components/ui/Loader';
-import { API_BASE_URL } from '../../lib/constants';
+import { API_V1 } from '../../lib/constants';
 
 interface HistoryRecord {
   session_id: string;
@@ -29,7 +29,9 @@ export default function HistoryPage() {
   useEffect(() => {
     const fetchPatients = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/patients?limit=100`);
+        const token = localStorage.getItem('cura_token');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch(`${API_V1}/patients?limit=100`, { headers });
         if (res.ok) setAllPatients(await res.json());
       } catch {}
     };
@@ -41,7 +43,9 @@ export default function HistoryPage() {
     if (!patientId.trim()) { setRecords([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/patients/${encodeURIComponent(patientId)}/history`);
+      const token = localStorage.getItem('cura_token');
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_V1}/patients/${encodeURIComponent(patientId)}/history`, { headers });
       if (res.ok) {
         const data = await res.json();
         setRecords(Array.isArray(data) ? data : []);
@@ -92,17 +96,17 @@ export default function HistoryPage() {
           <svg className="w-8 h-8 text-[#3f3f46] mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-[13px] text-[#71717a] font-medium">Consultation History</p>
-          <p className="text-[11px] text-[#52525b] mt-1">Enter a Patient ID or click a recent patient to view their consultation history from Supabase.</p>
+          <p className="text-[14.5px] text-[#71717a] font-medium">Consultation History</p>
+          <p className="text-[12.5px] text-[#52525b] mt-1">Enter a Patient ID or click a recent patient to view their consultation history from Supabase.</p>
         </div>
       ) : records.length === 0 ? (
         <div className="py-12 text-center">
-          <p className="text-[12px] text-[#71717a]">No consultations found for &quot;{search}&quot;</p>
-          <p className="text-[10px] text-[#52525b] mt-1">Make sure the Patient ID is correct and that consultations have been finalized.</p>
+          <p className="text-[13.5px] text-[#71717a]">No consultations found for &quot;{search}&quot;</p>
+          <p className="text-[11.5px] text-[#52525b] mt-1">Make sure the Patient ID is correct and that consultations have been finalized.</p>
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-[11px] text-[#52525b] font-medium">{records.length} consultation{records.length !== 1 ? 's' : ''} found for {search}</p>
+          <p className="text-[12.5px] text-[#52525b] font-medium">{records.length} consultation{records.length !== 1 ? 's' : ''} found for {search}</p>
           {records.map((r, i) => {
             const exp = expandedId === r.session_id;
             return (
@@ -110,15 +114,15 @@ export default function HistoryPage() {
                 <button onClick={() => setExpandedId(exp ? null : r.session_id)}
                   className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
                   <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-[#52525b] font-mono">{r.created_at?.slice(0, 16)?.replace('T', ' ') || '—'}</span>
+                    <span className="text-[11.5px] text-[#52525b] font-mono">{r.created_at?.slice(0, 16)?.replace('T', ' ') || '—'}</span>
                     <Badge variant="info" label={r.patient_id} size="sm" />
-                    <span className="text-[12px] text-[#a1a1aa] font-medium truncate max-w-[400px]">{r.soap_assessment || 'No assessment'}</span>
+                    <span className="text-[13.5px] text-[#a1a1aa] font-medium truncate max-w-[400px]">{r.soap_assessment || 'No assessment'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {r.confidence_score > 0 && <Badge variant={r.confidence_score >= 80 ? 'success' : 'warning'} label={`${r.confidence_score}%`} size="sm" />}
-                    {r.billing_codes?.length > 0 && <span className="text-[9px] text-[#52525b] font-mono">{r.billing_codes.length} codes</span>}
+                    {r.billing_codes?.length > 0 && <span className="text-[10.5px] text-[#52525b] font-mono">{r.billing_codes.length} codes</span>}
                     <svg className={`w-3.5 h-3.5 text-[#52525b] transition-transform duration-200 ${exp ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                       fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -133,17 +137,17 @@ export default function HistoryPage() {
                       { key: 'Plan', val: r.soap_plan },
                     ].map((s) => (
                       <div key={s.key}>
-                        <p className="text-[10px] text-[#52525b] uppercase tracking-wider font-semibold mb-0.5">{s.key}</p>
-                        <p className="text-[12px] text-[#a1a1aa] whitespace-pre-line">{s.val || '—'}</p>
+                        <p className="text-[11.5px] text-[#52525b] uppercase tracking-wider font-semibold mb-0.5">{s.key}</p>
+                        <p className="text-[13.5px] text-[#a1a1aa] whitespace-pre-line">{s.val || '—'}</p>
                       </div>
                     ))}
 
                     {r.billing_codes && r.billing_codes.length > 0 && (
                       <div>
-                        <p className="text-[10px] text-[#52525b] uppercase tracking-wider font-semibold mb-1">Billing Codes</p>
+                        <p className="text-[11.5px] text-[#52525b] uppercase tracking-wider font-semibold mb-1">Billing Codes</p>
                         <div className="flex flex-wrap gap-1.5">
                           {r.billing_codes.map((b: any, j: number) => (
-                            <span key={j} className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.03] text-[#a1a1aa] border border-white/[0.06]">
+                            <span key={j} className="text-[11.5px] px-2 py-0.5 rounded-md bg-white/[0.03] text-[#a1a1aa] border border-white/[0.06]">
                               {b.code}: {b.description}
                             </span>
                           ))}
@@ -153,15 +157,15 @@ export default function HistoryPage() {
 
                     {r.safety_flags && r.safety_flags.length > 0 && (
                       <div>
-                        <p className="text-[10px] text-[#52525b] uppercase tracking-wider font-semibold mb-1">Safety Alerts</p>
+                        <p className="text-[11.5px] text-[#52525b] uppercase tracking-wider font-semibold mb-1">Safety Alerts</p>
                         {r.safety_flags.map((f: any, j: number) => (
-                          <p key={j} className="text-[11px] text-[#f87171]">[{f.level}] {f.message}</p>
+                          <p key={j} className="text-[12.5px] text-[#f87171]">[{f.level}] {f.message}</p>
                         ))}
                       </div>
                     )}
 
                     <div className="pt-2 border-t border-white/[0.04]">
-                      <span className="text-[9px] text-[#3f3f46] font-mono">Session: {r.session_id}</span>
+                      <span className="text-[10px] text-[#3f3f46] font-mono">Session: {r.session_id}</span>
                     </div>
                   </div>
                 )}

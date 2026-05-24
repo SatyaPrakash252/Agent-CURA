@@ -23,16 +23,16 @@ export default function BillingCodes({ codes }: BillingCodesProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-white tracking-tight">
             Billing Codes
           </span>
           {isDemo && (
-            <span className="text-[10px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
         </div>
-        <span className="text-[10px] text-[#444]">
+        <span className="text-[11.5px] text-[#444]">
           {data.length} code{data.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -40,7 +40,7 @@ export default function BillingCodes({ codes }: BillingCodesProps) {
       {/* Table */}
       <div className="divide-y divide-white/[0.06]">
         {/* Column headers */}
-        <div className="grid grid-cols-[80px_1fr_100px] px-4 py-2 text-[10px] font-medium text-[#444] uppercase tracking-wider">
+        <div className="grid grid-cols-[80px_1fr_100px] px-4 py-2 text-[11px] font-medium text-[#444] uppercase tracking-wider">
           <span>Code</span>
           <span>Description</span>
           <span className="text-right">Type</span>
@@ -52,15 +52,15 @@ export default function BillingCodes({ codes }: BillingCodesProps) {
             key={i}
             className="grid grid-cols-[80px_1fr_100px] items-center px-4 py-2.5 hover:bg-[#161618] transition-colors duration-150"
           >
-            <span className="font-mono text-[12px] font-semibold text-[#6366f1]">
+            <span className="font-mono text-[13.5px] font-semibold text-[#6366f1]">
               {item.code}
             </span>
-            <span className="text-[12px] text-[#888] truncate pr-3">
+            <span className="text-[13.5px] text-[#888] truncate pr-3">
               {item.description}
             </span>
             <span className="text-right">
               <span
-                className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                className={`inline-block text-[11.5px] font-medium px-1.5 py-0.5 rounded-md ${
                   item.code_type === 'ICD-10-CM'
                     ? 'text-amber-400 bg-amber-400/10'
                     : 'text-emerald-400 bg-emerald-400/10'

@@ -58,7 +58,7 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
           </svg>
         </div>
-        <p className="text-[12px] text-[#555]">Waiting for audio…</p>
+        <p className="text-[13.5px] text-[#555]">Waiting for audio…</p>
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
             {/* Speaker label */}
             <div className="flex-shrink-0 pt-px">
               <span
-                className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-medium tracking-wide uppercase ${
+                className={`inline-block px-1.5 py-0.5 rounded-md text-[11px] font-medium tracking-wide uppercase ${
                   isDoctor
                     ? 'bg-[#6366f1]/10 text-[#6366f1] border border-[#6366f1]/20'
                     : 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/20'
@@ -97,11 +97,11 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
                   onBlur={handleCommitEdit}
                   onKeyDown={handleKeyDown}
                   autoFocus
-                  className="w-full bg-[#111113] border border-white/[0.06] rounded-md px-2 py-1 text-[12px] text-white outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
+                  className="w-full bg-[#111113] border border-white/[0.06] rounded-md px-2 py-1 text-[13.5px] text-white outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
                 />
               ) : (
                 <p
-                  className={`text-[12px] text-white leading-relaxed ${
+                  className={`text-[13.5px] text-white leading-relaxed ${
                     onEdit ? 'cursor-text' : ''
                   }`}
                   onClick={() => handleStartEdit(i, seg.text)}
@@ -109,7 +109,7 @@ export default function LiveTranscript({ segments, onEdit }: LiveTranscriptProps
                   {seg.text}
                 </p>
               )}
-              <span className="text-[10px] text-[#444] font-mono mt-0.5 block">
+              <span className="text-[11.5px] text-[#444] font-mono mt-0.5 block">
                 {formatTime(seg.start_time)}
               </span>
             </div>

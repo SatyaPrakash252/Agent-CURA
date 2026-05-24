@@ -59,10 +59,10 @@ function Waveform({ data, active }: { data: number[]; active: boolean }) {
 export default function AudioRecorder({ sessionId, onTranscriptChunk, isRecording, onToggleRecording }: AudioRecorderProps) {
   const { status, sendAudio, connect, disconnect } = useWebSocket({
     sessionId: isRecording ? sessionId : null,
-    onTranscript: onTranscriptChunk,
+    onTranscriptChunk: onTranscriptChunk,
   });
 
-  const onChunk = useCallback((d: ArrayBuffer) => { if (status === 'open') sendAudio(d); }, [status, sendAudio]);
+  const onChunk = useCallback((d: ArrayBuffer) => { if (status === 'connected') sendAudio(d); }, [status, sendAudio]);
   const { startRecording, stopRecording, waveformData, error, permissionState } = useAudioRecorder({ sendAudio: onChunk });
 
   useEffect(() => {

@@ -38,16 +38,16 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-white tracking-tight">
             FHIR Actions
           </span>
           {isDemo && (
-            <span className="text-[10px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
         </div>
-        <span className="text-[10px] text-[#444]">
+        <span className="text-[11.5px] text-[#444]">
           {data.length} intent{data.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -64,21 +64,21 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
               className="flex items-center gap-3 px-4 py-3 hover:bg-[#161618] transition-colors duration-150"
             >
               {/* Icon */}
-              <span className="flex-shrink-0 w-7 h-7 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[12px] flex items-center justify-center">
+              <span className="flex-shrink-0 w-7 h-7 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[13px] flex items-center justify-center">
                 {meta.icon}
               </span>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-medium text-white truncate">
+                <p className="text-[13.5px] font-medium text-white truncate">
                   {intent.item}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] font-medium text-[#6366f1] bg-[#6366f1]/10 px-1.5 py-0.5 rounded-md">
+                  <span className="text-[11px] font-medium text-[#6366f1] bg-[#6366f1]/10 px-1.5 py-0.5 rounded-md">
                     {meta.label}
                   </span>
                   <span
-                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                    className={`text-[11px] font-medium px-1.5 py-0.5 rounded-md ${
                       intent.urgency === 'urgent'
                         ? 'text-red-400 bg-red-400/10'
                         : 'text-[#555] bg-white/[0.04]'
@@ -91,13 +91,13 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
 
               {/* Action */}
               {done ? (
-                <span className="flex-shrink-0 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md">
+                <span className="flex-shrink-0 text-[11.5px] font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md">
                   Transmitted
                 </span>
               ) : (
                 <button
                   onClick={() => handleTransmit(i)}
-                  className="flex-shrink-0 text-[11px] font-medium text-white bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.06] px-3 py-1 rounded-md transition-colors duration-150"
+                  className="flex-shrink-0 text-[12.5px] font-medium text-white bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.06] px-3 py-1 rounded-md transition-colors duration-150"
                 >
                   Transmit
                 </button>
@@ -112,7 +112,7 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
         <div className="border-t border-white/[0.06]">
           <button
             onClick={() => setExpandedJson(!expandedJson)}
-            className="flex items-center gap-2 w-full px-4 py-2.5 text-[11px] text-[#555] hover:text-white transition-colors duration-150"
+            className="flex items-center gap-2 w-full px-4 py-2.5 text-[12.5px] text-[#555] hover:text-white transition-colors duration-150"
           >
             <svg
               className={`w-3 h-3 transition-transform duration-150 ${expandedJson ? 'rotate-90' : ''}`}
@@ -126,7 +126,7 @@ export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
             View FHIR Bundle JSON
           </button>
           {expandedJson && (
-            <pre className="mx-4 mb-3 p-3 rounded-md bg-[#0a0a0b] border border-white/[0.06] text-[10px] text-[#555] overflow-auto max-h-[280px] font-mono">
+            <pre className="mx-4 mb-3 p-3 rounded-md bg-[#0a0a0b] border border-white/[0.06] text-[11.5px] text-[#555] overflow-auto max-h-[280px] font-mono">
               {JSON.stringify(fhirBundle, null, 2)}
             </pre>
           )}

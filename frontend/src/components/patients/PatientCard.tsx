@@ -29,30 +29,30 @@ export default function PatientCard({ patient, onClick }: PatientCardProps) {
       <div className="flex items-center gap-3">
         {/* Avatar */}
         <div className="w-9 h-9 rounded-md bg-[#6366f1]/10 border border-[#6366f1]/20 flex items-center justify-center flex-shrink-0">
-          <span className="text-[11px] font-semibold text-[#6366f1]">
+          <span className="text-[12.5px] font-semibold text-[#6366f1]">
             {getInitials(patient.name || patient.patient_id)}
           </span>
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-medium text-white truncate">
+          <p className="text-[14.5px] font-medium text-white truncate">
             {patient.name || patient.patient_id}
           </p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[10px] text-[#555] font-mono">
+            <span className="text-[11px] text-[#555] font-mono">
               {patient.patient_id}
             </span>
             {patient.age != null && (
               <>
-                <span className="text-[10px] text-[#444]">·</span>
-                <span className="text-[10px] text-[#888]">{patient.age}y</span>
+                <span className="text-[11px] text-[#444]">·</span>
+                <span className="text-[11px] text-[#888]">{patient.age}y</span>
               </>
             )}
             {patient.gender && (
               <>
-                <span className="text-[10px] text-[#444]">·</span>
-                <span className="text-[10px] text-[#888]">{patient.gender}</span>
+                <span className="text-[11px] text-[#444]">·</span>
+                <span className="text-[11px] text-[#888]">{patient.gender}</span>
               </>
             )}
           </div>

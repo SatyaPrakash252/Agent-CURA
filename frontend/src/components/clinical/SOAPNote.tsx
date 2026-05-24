@@ -60,18 +60,18 @@ export default function SOAPNote({ soap, confidenceScore, isLoading }: SOAPNoteP
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-white tracking-tight">
+          <span className="text-[14.5px] font-semibold text-white tracking-tight">
             SOAP Note
           </span>
           {isDemo && (
-            <span className="text-[10px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
+            <span className="text-[11.5px] font-medium text-[#555] bg-white/[0.04] px-1.5 py-0.5 rounded-md">
               DEMO
             </span>
           )}
         </div>
         {confidencePct !== null && (
           <span
-            className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+            className={`text-[11.5px] font-semibold px-2 py-0.5 rounded-md ${
               confidencePct >= 80
                 ? 'text-emerald-400 bg-emerald-400/10'
                 : confidencePct >= 60
@@ -92,18 +92,18 @@ export default function SOAPNote({ soap, confidenceScore, isLoading }: SOAPNoteP
             <div key={sec.key} className="group relative px-4 py-3 hover:bg-[#161618] transition-colors duration-150">
               <div className="flex items-start gap-3">
                 {/* Letter badge */}
-                <span className="flex-shrink-0 w-6 h-6 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[11px] font-bold flex items-center justify-center mt-0.5">
+                <span className="flex-shrink-0 w-6 h-6 rounded-md bg-[#6366f1]/10 text-[#6366f1] text-[12.5px] font-bold flex items-center justify-center mt-0.5">
                   {sec.label}
                 </span>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-[#555] uppercase tracking-wider mb-1">
+                  <p className="text-[11.5px] font-medium text-[#555] uppercase tracking-wider mb-1">
                     {sec.full}
                   </p>
                   {isLoading ? (
                     <SkeletonBlock />
                   ) : (
-                    <p className="text-[12px] leading-relaxed text-[#888] whitespace-pre-wrap">
+                    <p className="text-[13.5px] leading-relaxed text-[#888] whitespace-pre-wrap">
                       {content || 'No data available'}
                     </p>
                   )}

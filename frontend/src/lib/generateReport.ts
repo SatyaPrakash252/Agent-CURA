@@ -242,11 +242,20 @@ export async function generateReport(data: ReportData): Promise<void> {
     doc.setFillColor(100, 100, 120); doc.rect(M, y + 2, 36, 0.8, 'F');
     y += 10;
 
-    for (const seg of data.segments.slice(0, 30)) {
+    for (const seg of data.segments) {
       checkPage(12);
       const isDoc = (seg.speaker || '').toLowerCase().includes('doctor');
+      const isPat = (seg.speaker || '').toLowerCase().includes('patient');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-      doc.setTextColor(isDoc ? 99 : 34, isDoc ? 102 : 197, isDoc ? 241 : 94);
+      
+      if (isDoc) {
+        doc.setTextColor(99, 102, 241); // Indigo for Doctor
+      } else if (isPat) {
+        doc.setTextColor(16, 185, 129); // Emerald for Patient
+      } else {
+        doc.setTextColor(140, 140, 155); // Gray default
+      }
+      
       doc.text((seg.speaker || 'Unknown').toUpperCase(), M + 4, y + 4);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(70, 70, 80);
       const tl = doc.splitTextToSize(seg.text, CW - 40);

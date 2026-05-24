@@ -51,12 +51,12 @@ export default function PatientList({
             type="text"
             placeholder="Search patients…"
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#111113] border border-white/[0.06] text-[12px] text-white placeholder-[#555] outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
+            className="w-full pl-8 pr-3 py-2 rounded-lg bg-[#111113] border border-white/[0.06] text-[13.5px] text-white placeholder-[#555] outline-none focus:border-[#6366f1]/40 transition-colors duration-150"
           />
         </div>
         <button
           onClick={onAddNew}
-          className="px-3 py-2 rounded-lg bg-[#6366f1] text-white text-[12px] font-medium hover:bg-[#5558e6] transition-colors duration-150"
+          className="px-3 py-2 rounded-lg bg-[#6366f1] text-white text-[13.5px] font-medium hover:bg-[#5558e6] transition-colors duration-150"
         >
           + Add
         </button>
@@ -66,7 +66,7 @@ export default function PatientList({
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-5 h-5 border-2 border-[#6366f1]/30 border-t-[#6366f1] rounded-full animate-spin" />
-          <span className="ml-2 text-[12px] text-[#555]">Loading patients…</span>
+          <span className="ml-2 text-[13.5px] text-[#555]">Loading patients…</span>
         </div>
       ) : (
         /* Table */
@@ -74,16 +74,16 @@ export default function PatientList({
           <table className="w-full">
             <thead>
               <tr className="bg-[#111113]">
-                <th className="text-left text-[10px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
+                <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
                   ID
                 </th>
-                <th className="text-left text-[10px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
+                <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
                   Name
                 </th>
-                <th className="text-left text-[10px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
+                <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
                   Age
                 </th>
-                <th className="text-left text-[10px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
+                <th className="text-left text-[11.5px] font-medium text-[#555] uppercase tracking-wider px-3 py-2">
                   Gender
                 </th>
               </tr>
@@ -95,16 +95,16 @@ export default function PatientList({
                   onClick={() => onSelectPatient?.(p)}
                   className="border-t border-white/[0.06] hover:bg-[#161618] cursor-pointer transition-colors duration-150"
                 >
-                  <td className="px-3 py-2.5 text-[11px] text-[#888] font-mono">
+                  <td className="px-3 py-2.5 text-[12.5px] text-[#888] font-mono">
                     {p.patient_id}
                   </td>
-                  <td className="px-3 py-2.5 text-[12px] text-white font-medium">
+                  <td className="px-3 py-2.5 text-[13.5px] text-white font-medium">
                     {p.name}
                   </td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#888]">
+                  <td className="px-3 py-2.5 text-[13.5px] text-[#888]">
                     {p.age ?? '—'}
                   </td>
-                  <td className="px-3 py-2.5 text-[12px] text-[#888]">
+                  <td className="px-3 py-2.5 text-[13.5px] text-[#888]">
                     {p.gender || '—'}
                   </td>
                 </tr>
