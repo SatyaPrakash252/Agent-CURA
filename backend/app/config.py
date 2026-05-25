@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     SUPABASE_URL: str
     SUPABASE_KEY: str
+    DEEPGRAM_API_KEY: str | None = None
 
     # --- Whisper ---
     WHISPER_MODEL_SIZE: str = "small"
