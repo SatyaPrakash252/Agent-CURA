@@ -16,14 +16,15 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 cura && adduser --system --uid 1001 cura
 
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
+# Copy standalone files (extremely lightweight!)
 COPY --from=builder /app/public ./public
+COPY --from=builder --chown=cura:cura /app/.next/standalone ./
+COPY --from=builder --chown=cura:cura /app/.next/static ./.next/static
 
 # Install wget for health check
 RUN apk add --no-cache wget
@@ -36,4 +37,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget -q --spider http://localhost:3000 || exit 1
 
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]

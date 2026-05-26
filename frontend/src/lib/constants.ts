@@ -2,8 +2,23 @@
    Project Cura – Constants & Configuration
    =========================================== */
 
-export const API_BASE_URL = "http://127.0.0.1:8000";
-export const WS_BASE_URL = "ws://127.0.0.1:8000";
+const getApiBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+};
+
+const getWsBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.hostname}:8000`;
+  }
+  return "ws://127.0.0.1:8000";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
+export const WS_BASE_URL = getWsBaseUrl();
 export const API_V1 = `${API_BASE_URL}/api/v1`;
 
 // Audio configuration
