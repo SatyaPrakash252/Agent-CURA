@@ -42,6 +42,15 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Project Cura API v2.0.0 starting up...")
 
+    # Pre-initialize database connectivity and tables at startup
+    from app.models.database import init_db
+    try:
+        logger.info("Pre-initializing database connectivity and tables...")
+        init_db()
+        logger.info("Database pre-initialization complete.")
+    except Exception as db_err:
+        logger.error("Failed to pre-initialize database: %s", db_err)
+
     # Pre-load Whisper model only if Deepgram is NOT configured (Whisper is the fallback)
     settings = get_settings()
     has_deepgram = bool(settings.DEEPGRAM_API_KEY and len(settings.DEEPGRAM_API_KEY.strip()) > 0)
