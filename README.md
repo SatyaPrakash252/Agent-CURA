@@ -11,52 +11,64 @@
 Project Cura was developed as a flagship AI agent framework for the **Cognizant Technoverse Hackathon 2026**. It targets the massive administrative burden and burnout faced by modern physicians (saving up to 3 hours daily on clinical documentation).
 
 ### Key Hackathon Innovations:
-1. **Agentic Orchestration:** Operates four specialized AI agents (Scribe, Auditor, Billing, Diarizer) sequentially in a self-healing pipeline.
-2. **Offline-First Resilience:** Implements a transparent, self-healing local SQLite datastore fallback. If Supabase cloud database resolution or schema caches fail, the system instantly switches locally to preserve critical patient intake records.
-3. **Seamless Multi-Language Voice Capture:** Features 2-second real-time speech processing with forced locale controls (English, Hindi, Spanish) to eliminate translation lag and hallucinations.
-4. **HL7 FHIR & ICD-10 Compliant:** Auto-generates standard-compliant JSON FHIR bundles containing conditions, encounters, and medication requests mapped directly to official ICD-10-CM codes.
+1. **Agentic Orchestration & Bypass Logic:** Coordinates Scribe (Llama 3.3 70B), Clinical Auditor, and Billing Engine agents in an optimized sequence. Automatically bypasses diarizer LLM refinement when native Deepgram stream diarization is active, saving **2+ seconds** of finalization latency.
+2. **Offline-First Resilience & Startup Lifespan Warming:** Implements a self-healing hybrid database engine. Supabase cloud schema and DNS connectivity are pre-checked and SQLite tables warmed during application **lifespan startup**, eliminating first-request latency. Instantly redirects queries locally to SQLite if the cloud connection encounters errors.
+3. **Dual-Engine Speech-to-Text Pipeline:** Delivers sub-100ms real-time audio transcription over WebSockets utilizing **Deepgram Nova-2** (with native diarization and structural paragraph formatting) and a 30s heartbeat failsafe. Gracefully falls back to a CPU-optimized local **faster-whisper** engine under poor network states.
+4. **Clinical Speaker Swapping & UI Polish:** Provides a custom glowing metallic SVG branding logo and visual audio waveform equalization canvas. Integrated an instant **"Swap Speakers"** (🔁) action control allowing physicians to correct diarization mismatches in a single click.
+5. **HL7 FHIR & ICD-10 Compliant:** Auto-generates standard-compliant JSON FHIR bundles containing conditions, encounters, and medication requests mapped directly to official ICD-10-CM codes.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Systems Map
 
 ```mermaid
 graph TD
-    subgraph Frontend["Next.js Frontend"]
-        A[Dashboard] --> B[Consultation Page]
-        B --> C[Audio Recorder]
-        B --> D[Live Transcript]
-        B --> E[SOAP + Billing + FHIR]
-        F[Patient Directory]
-        G[History]
-        H[Login Page]
+    subgraph Frontend [Next.js 14 Web Client]
+        A[Sidebar/Navigation] --> B[Dashboard View]
+        A --> C[Consultation Workspace]
+        A --> D[Patients Directory]
+        A --> E[Database Explorer]
+        A --> F[History Log]
+        
+        C --> G[AudioRecorder]
+        G --> H[ClinicalAgentOrb Waveform]
+        C --> I[LiveTranscript UI]
+        I --> J[Swap Speakers Control]
+        C --> K[SOAP Note Workspace]
     end
 
-    subgraph Backend["FastAPI Backend"]
-        I[WebSocket Audio Stream] --> J[Whisper Transcriber]
-        J --> K[Speaker Diarizer]
-        K --> L[Orchestrator]
-        L --> M[Agent A: Scribe]
-        L --> N[Agent B: Auditor]
-        L --> O[Agent C: Billing]
-        L --> P[Agent D: Diarizer Refiner]
-        L --> Q[Safety Service]
-        L --> R[FHIR Bridge]
+    subgraph Backend [FastAPI Server]
+        L[CORS & Rate Limiter] --> M[JWT Auth Middleware]
+        M --> N[Versioned API Routers /api/v1]
+        
+        N --> O[ws_audio Router]
+        N --> P[consultation Router]
+        N --> Q[patients Router]
+        N --> R[database Router]
+        
+        O --> S{Speech-to-Text Pipeline}
+        S -- Primary --> T[Deepgram Nova-2 WebSockets]
+        S -- Fallback --> U[Local Whisper small CPU]
+        
+        P --> V[Orchestrator Agent Sequence]
+        V --> W[Scribe Agent Llama 3.3 70B]
+        V --> X[Auditor Agent Llama 3.1 8B]
+        V --> Y[Billing Agent Llama 3.1 8B]
+        
+        V --> Z[CuraSafety Service]
+        Z --> AA[PII Redaction & Drug Audit]
+        
+        V --> AB[FHIR Builder Bridge]
     end
 
-    subgraph Services["External Services"]
-        S[Groq Cloud - Llama 3.3 70B]
-        T[Supabase - PostgreSQL]
-        U[Faster Whisper - Local STT]
+    subgraph Storage [Database & Persistence]
+        AC{Database Router}
+        AC -- Cloud Mode --> AD[Supabase PostgreSQL]
+        AC -- Fallback Mode --> AE[Local SQLite cura_local.db]
     end
 
-    C -->|PCM Audio via WebSocket| I
-    M --> S
-    N --> S
-    O --> S
-    P --> S
-    L --> T
-    Frontend --> Backend
+    Frontend -- REST API & WebSockets --> Backend
+    Backend -- SQL Migrations --> Storage
 ```
 
 ## 🧠 Multi-Agent Pipeline
