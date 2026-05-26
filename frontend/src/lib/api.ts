@@ -3,7 +3,7 @@
    REST API wrapper with error handling
    =========================================== */
 
-import { API_BASE_URL } from "./constants";
+import { API_V1 } from "./constants";
 import type {
   ConsultationResult,
   ConsultationFinalizeRequest,
@@ -26,7 +26,8 @@ async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const path = endpoint.startsWith("/api") ? endpoint.slice(4) : endpoint;
+  const url = `${API_V1}${path}`;
 
   const defaultHeaders: Record<string, string> = {
     "Content-Type": "application/json",

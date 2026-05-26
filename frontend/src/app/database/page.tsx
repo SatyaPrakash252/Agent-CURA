@@ -186,7 +186,7 @@ export default function DatabaseExplorerPage() {
                     }`}
                   >
                     <span className="text-[13.5px] capitalize">{t.name.replace('_', ' ')}</span>
-                    <Badge variant={active ? 'info' : 'secondary'} label={String(t.rows)} size="sm" />
+                    <Badge variant={active ? 'info' : 'neutral'} label={String(t.rows)} size="sm" />
                   </button>
                 );
               })}
@@ -410,7 +410,7 @@ export default function DatabaseExplorerPage() {
                                 <div className="space-y-3 animate-in">
                                   <div className="flex items-center justify-between">
                                     <span className="text-[11.5px] text-[var(--text-muted)] font-mono font-bold uppercase tracking-wider">Raw Database Payload</span>
-                                    <Button variant="ghost" size="xs" onClick={() => viewJson(`Row ${id} Details`, r)}>
+                                    <Button variant="ghost" size="sm" onClick={() => viewJson(`Row ${id} Details`, r)}>
                                       🖥️ Open in Modal Viewer
                                     </Button>
                                   </div>

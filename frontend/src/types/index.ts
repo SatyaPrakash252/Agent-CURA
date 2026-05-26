@@ -38,6 +38,7 @@ export interface SpeakerSegment {
   text: string;
   start_time: number;
   end_time: number;
+  is_final?: boolean;
 }
 
 // --- Transcript Chunk (received via WebSocket) ---
@@ -108,6 +109,7 @@ export interface HealthResponse {
   whisper_loaded: boolean;
   groq_configured: boolean;
   supabase_connected: boolean;
+  deepgram_configured: boolean;
   version: string;
 }
 

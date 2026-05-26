@@ -69,11 +69,12 @@ export default function LiveTranscript({ segments, onEdit, onToggleSpeaker }: Li
       {segments.map((seg, i) => {
         const isDoctor = seg.speaker === 'Doctor';
         const isEditing = editingIndex === i;
+        const isInterim = seg.is_final === false;
 
         return (
           <div
             key={i}
-            className="group flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors duration-150"
+            className={`group flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors duration-150 ${isInterim ? 'opacity-60' : ''}`}
           >
             {/* Clickable Speaker label button */}
             <div className="flex-shrink-0 pt-px">
@@ -116,6 +117,7 @@ export default function LiveTranscript({ segments, onEdit, onToggleSpeaker }: Li
               )}
               <span className="text-[11px] text-[#444] font-mono mt-0.5 block">
                 {formatTime(seg.start_time)}
+                {isInterim && <span className="ml-2 text-indigo-400 animate-pulse">⟵ typing…</span>}
               </span>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Badge from '../ui/Badge';
-import { API_BASE_URL } from '../../lib/constants';
+import { API_V1 } from '../../lib/constants';
 import type { HealthResponse } from '../../types';
 
 export default function StatusBar() {
@@ -12,7 +12,7 @@ export default function StatusBar() {
   useEffect(() => {
     const fetchHealth = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/health`);
+        const res = await fetch(`${API_V1}/health`);
         if (res.ok) { setHealth(await res.json()); setIsLive(true); }
       } catch { setIsLive(false); }
     };

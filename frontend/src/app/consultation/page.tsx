@@ -67,20 +67,41 @@ export default function ConsultationPage() {
 
   // Called by AudioRecorder when WebSocket delivers a transcript chunk
   const handleTranscriptChunk = useCallback((chunk: TranscriptChunk) => {
-    segmentCounterRef.current += 1;
     let resolvedSpeaker = chunk.speaker || 'Doctor';
     if (activeSpeaker !== 'auto') {
       resolvedSpeaker = activeSpeaker;
     }
-    setSegments((prev) => [
-      ...prev,
-      {
-        speaker: resolvedSpeaker,
-        text: chunk.text,
-        start_time: chunk.timestamp,
-        end_time: chunk.timestamp + 1,
-      },
-    ]);
+
+    const newSeg: SpeakerSegment = {
+      speaker: resolvedSpeaker,
+      text: chunk.text,
+      start_time: chunk.timestamp,
+      end_time: chunk.timestamp + 1,
+      is_final: chunk.is_final,
+    };
+
+    if (chunk.is_final) {
+      // Final result: replace the last interim segment (if any) with the final version
+      segmentCounterRef.current += 1;
+      setSegments((prev) => {
+        // If the last segment was interim (not final), replace it
+        if (prev.length > 0 && !prev[prev.length - 1].is_final) {
+          return [...prev.slice(0, -1), newSeg];
+        }
+        // Otherwise just append
+        return [...prev, newSeg];
+      });
+    } else {
+      // Interim result: update the last segment in-place for instant visual feedback
+      setSegments((prev) => {
+        if (prev.length > 0 && !prev[prev.length - 1].is_final) {
+          // Replace the last interim segment with the updated interim
+          return [...prev.slice(0, -1), newSeg];
+        }
+        // First interim for a new utterance — append it
+        return [...prev, newSeg];
+      });
+    }
   }, [activeSpeaker]);
 
   const handleStart = () => {
@@ -138,6 +159,16 @@ export default function ConsultationPage() {
           : s
       )
     );
+  };
+
+  const handleSwapAllSpeakers = () => {
+    setSegments((prev) =>
+      prev.map((s) => ({
+        ...s,
+        speaker: s.speaker === 'Doctor' ? 'Patient' : 'Doctor',
+      }))
+    );
+    toastSuccess('Swapped all speakers (Doctor ↔ Patient)!');
   };
 
   const handleFinalize = async () => {
@@ -497,7 +528,17 @@ export default function ConsultationPage() {
           {segments.length > 0 && (
             <div className="surface p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="label">Live Transcript</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="label">Live Transcript</h3>
+                  <button
+                    type="button"
+                    onClick={handleSwapAllSpeakers}
+                    className="text-[10px] px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.1] transition-all flex items-center gap-1 font-semibold select-none"
+                    title="Swap Doctor and Patient speakers for all segments"
+                  >
+                    🔁 Swap Speakers
+                  </button>
+                </div>
                 <span className="text-[11.5px] text-[#52525b] font-mono">{segments.length} segments</span>
               </div>
               <div className="max-h-[300px] overflow-y-auto">
@@ -517,7 +558,7 @@ export default function ConsultationPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
               <p className="text-[14.5px] text-[#71717a] font-medium">Ready to record</p>
-              <p className="text-[12.5px] text-[#52525b] mt-1">Click the microphone button to start capturing audio.<br/>Audio is streamed in real-time to Whisper for transcription.</p>
+              <p className="text-[12.5px] text-[#52525b] mt-1">Click the microphone button to start capturing audio.<br/>Audio is streamed in real-time to Deepgram for instant transcription.</p>
             </div>
           )}
 

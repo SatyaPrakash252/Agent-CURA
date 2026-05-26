@@ -14,6 +14,7 @@ from app.agents.auditor import AuditorAgent
 from app.agents.billing import BillingAgent
 from app.agents.scribe import ScribeAgent
 from app.agents.diarizer_refiner import DiarizerRefinerAgent
+from app.config import get_settings
 from app.models.database import save_consultation
 from app.models.schemas import (
     BillingCode,
@@ -83,14 +84,20 @@ class Orchestrator:
         fhir_bundle: dict | None = None
 
         # --- Stage 0: Speaker Diarization Refinement ---
+        settings = get_settings()
+        has_deepgram = bool(settings.DEEPGRAM_API_KEY and len(settings.DEEPGRAM_API_KEY.strip()) > 0)
+
         if speaker_segments:
-            try:
-                logger.info("[%s] Stage 0: Running Speaker Diarization Refinement...", session_id)
-                speaker_segments = await self._refiner.refine_segments(speaker_segments)
-                # Re-generate the transcript with the corrected speaker labels
-                transcript = "\n".join([f"{seg.speaker}: {seg.text}" for seg in speaker_segments])
-            except Exception as e:
-                logger.error("[%s] Speaker Diarization Refinement failed: %s", session_id, e)
+            if has_deepgram:
+                logger.info("[%s] Stage 0: Skipping Speaker Diarization Refinement (Deepgram native diarization active)", session_id)
+            else:
+                try:
+                    logger.info("[%s] Stage 0: Running Speaker Diarization Refinement...", session_id)
+                    speaker_segments = await self._refiner.refine_segments(speaker_segments)
+                    # Re-generate the transcript with the corrected speaker labels
+                    transcript = "\n".join([f"{seg.speaker}: {seg.text}" for seg in speaker_segments])
+                except Exception as e:
+                    logger.error("[%s] Speaker Diarization Refinement failed: %s", session_id, e)
 
         # --- Stage 1: Scribe Agent (SOAP Note Generation) ---
         logger.info("[%s] Stage 1: Running Scribe agent...", session_id)

@@ -184,7 +184,7 @@ export default function ClinicalAgentOrb({ data, active, elapsed, language }: Cl
               <span className="text-zinc-800">•</span>
               <span className="flex items-center gap-1">
                 <span className="w-1 h-1 rounded-full bg-[#10b981] animate-ping" />
-                Whisper STT
+                Deepgram STT
               </span>
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function ClinicalAgentOrb({ data, active, elapsed, language }: Cl
       {/* Bottom status tracking overlay */}
       <div className="absolute bottom-4 left-6 right-6 flex items-center justify-between text-[10px] font-mono text-[var(--text-muted)] z-10">
         <span>LOCALE: {language.toUpperCase()}</span>
-        <span>FEED_RATE: 2.0s</span>
+        <span>STREAM: LIVE</span>
       </div>
     </div>
   );

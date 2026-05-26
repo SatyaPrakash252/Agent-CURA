@@ -1,9 +1,9 @@
 """
 Project Cura - WebSocket Audio Endpoint.
 
-Accepts streaming audio over WebSocket, buffers chunks,
-runs transcription with speaker diarization, and returns
-real-time transcript updates.
+Accepts streaming audio over WebSocket, streams directly to Deepgram WebSocket
+for instant transcription, and returns real-time transcript updates.
+Falls back to local Whisper buffering if Deepgram is unavailable.
 """
 
 import asyncio
@@ -12,8 +12,10 @@ import logging
 import time
 
 import numpy as np
+import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.config import get_settings
 from app.services.audio_storage import save_audio_to_storage
 from app.services.transcriber import transcribe_audio
 
@@ -24,12 +26,12 @@ router = APIRouter()
 # Audio parameters
 SAMPLE_RATE = 16000  # 16kHz
 BYTES_PER_SAMPLE = 2  # 16-bit PCM
-BUFFER_DURATION_SECONDS = 2.0  # 2 seconds for highly responsive real-time STT
-BUFFER_SIZE_BYTES = int(SAMPLE_RATE * BUFFER_DURATION_SECONDS * BYTES_PER_SAMPLE)
+FALLBACK_BUFFER_SECONDS = 2.0  # Only used if falling back to local Whisper
+FALLBACK_BUFFER_BYTES = int(SAMPLE_RATE * FALLBACK_BUFFER_SECONDS * BYTES_PER_SAMPLE)
 
-# Speaker diarization - energy-based
-SILENCE_ENERGY_THRESHOLD = 0.02  # RMS below this = silence
-SPEAKER_CHANGE_SILENCE_MS = 800  # 800ms silence = speaker change
+# Speaker diarization - energy-based (only for fallback)
+SILENCE_ENERGY_THRESHOLD = 0.02
+SPEAKER_CHANGE_SILENCE_MS = 800
 
 
 def _detect_speaker(
@@ -37,23 +39,11 @@ def _detect_speaker(
     prev_speaker: str,
     chunk_index: int,
 ) -> str:
-    """
-    Simple energy-based speaker detection.
-
-    Uses audio energy patterns and conversation flow to alternate
-    between Doctor and Patient speakers.
-
-    For real-time streaming, we use a simple heuristic:
-    - First speaker is always 'Doctor'
-    - Detect silence gaps > 800ms within the chunk
-    - If a significant pause is detected, toggle the speaker
-    - Also look at energy variance — questions have rising intonation (higher variance)
-    """
+    """Simple energy-based speaker detection (used only for local Whisper fallback)."""
     if chunk_index == 0:
         return "Doctor"
 
-    # Analyze the chunk in small frames (50ms each)
-    frame_size = int(SAMPLE_RATE * 0.05)  # 800 samples = 50ms
+    frame_size = int(SAMPLE_RATE * 0.05)  # 50ms
     num_frames = len(audio_chunk) // frame_size
     if num_frames < 2:
         return prev_speaker
@@ -61,11 +51,9 @@ def _detect_speaker(
     frames = audio_chunk[: num_frames * frame_size].reshape(num_frames, frame_size)
     frame_energies = np.sqrt(np.mean(frames ** 2, axis=1))
 
-    # Count consecutive silent frames
     silence_threshold = max(SILENCE_ENERGY_THRESHOLD, np.mean(frame_energies) * 0.15)
     silent_frames = frame_energies < silence_threshold
 
-    # Find longest consecutive silence
     max_silence_run = 0
     current_run = 0
     for is_silent in silent_frames:
@@ -75,17 +63,10 @@ def _detect_speaker(
         else:
             current_run = 0
 
-    silence_duration_ms = max_silence_run * 50  # Each frame = 50ms
+    silence_duration_ms = max_silence_run * 50
 
-    # If there's a significant pause (>800ms), toggle speaker
     if silence_duration_ms >= SPEAKER_CHANGE_SILENCE_MS:
         new_speaker = "Patient" if prev_speaker == "Doctor" else "Doctor"
-        logger.debug(
-            "Speaker change detected: %dms silence, %s -> %s",
-            silence_duration_ms,
-            prev_speaker,
-            new_speaker,
-        )
         return new_speaker
 
     return prev_speaker
@@ -97,107 +78,150 @@ async def audio_websocket(
     session_id: str,
     language: str | None = None
 ) -> None:
-    """
-    WebSocket endpoint for real-time audio streaming and transcription.
-
-    Protocol:
-        - Client sends binary audio chunks (16kHz, 16-bit PCM, mono).
-        - Client can also send JSON control messages:
-          {"type": "control", "action": "pause|resume|stop", "patient_id": "..."}
-        - Server responds with JSON transcript updates:
-          {"type": "transcript", "data": {"text": "...", "speaker": "Doctor|Patient", "timestamp": 0.0, "is_final": false}}
-    """
     await websocket.accept()
     logger.info("[%s] WebSocket connected", session_id)
 
-    audio_buffer = bytearray()
+    settings = get_settings()
+    dg_api_key = settings.DEEPGRAM_API_KEY
+    use_deepgram = bool(dg_api_key and len(dg_api_key.strip()) > 0)
+    dg_ws = None
+
+    if use_deepgram:
+        url = "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=16000&channels=1&diarize=true&smart_format=true&interim_results=true&endpointing=300"
+        if language and language != "auto":
+            url += f"&language={language}"
+        else:
+            url += "&detect_language=true"
+
+        try:
+            dg_ws = await websockets.connect(
+                url,
+                extra_headers={"Authorization": f"Token {dg_api_key}"}
+            )
+            logger.info("[%s] Connected to Deepgram Streaming WebSocket", session_id)
+        except Exception as e:
+            logger.error("[%s] Deepgram WebSocket connection failed: %s. Falling back to local.", session_id, e)
+            use_deepgram = False
+
     all_audio_data = bytearray()
+    fallback_buffer = bytearray()
     is_paused = False
     patient_id = "unknown"
     segment_counter = 0
     start_time = time.monotonic()
     current_speaker = "Doctor"
+    speaker_map = {} # Maps Deepgram speaker ID to "Doctor" or "Patient"
 
-    audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
+    async def receive_deepgram_transcripts():
+        """Listen for Deepgram responses and forward them to the frontend."""
+        nonlocal segment_counter
+        try:
+            while dg_ws and not dg_ws.closed:
+                res = await dg_ws.recv()
+                data = json.loads(res)
+                
+                if data.get("type") == "Results":
+                    channel = data.get("channel", {})
+                    alternatives = channel.get("alternatives", [])
+                    if alternatives:
+                        alt = alternatives[0]
+                        text = alt.get("transcript", "").strip()
+                        if not text:
+                            continue
 
-    async def process_audio_chunks() -> None:
-        """Background task that processes audio chunks from the queue."""
-        nonlocal segment_counter, current_speaker
+                        # Extract diarized speaker if available
+                        speaker_label = "Doctor"
+                        words = alt.get("words", [])
+                        if words:
+                            spk = words[0].get("speaker", 0)
+                            if spk not in speaker_map:
+                                if len(speaker_map) == 0:
+                                    speaker_map[spk] = "Doctor"
+                                elif len(speaker_map) == 1:
+                                    speaker_map[spk] = "Patient"
+                                else:
+                                    speaker_map[spk] = "Patient"
+                            speaker_label = speaker_map[spk]
 
-        while True:
+                        is_final = data.get("is_final", False)
+                        if is_final:
+                            segment_counter += 1
+                        elapsed = time.monotonic() - start_time
+                        
+                        response = {
+                            "type": "transcript",
+                            "data": {
+                                "text": text,
+                                "speaker": speaker_label,
+                                "timestamp": round(elapsed, 2),
+                                "is_final": is_final,
+                            },
+                        }
+                        try:
+                            await websocket.send_json(response)
+                        except Exception:
+                            break
+        except Exception as e:
+            logger.error("[%s] Deepgram receive error: %s", session_id, e)
+
+    dg_receive_task = None
+    if use_deepgram and dg_ws:
+        dg_receive_task = asyncio.create_task(receive_deepgram_transcripts())
+
+    async def process_fallback_audio():
+        """Fallback processing using Local Whisper REST if Deepgram fails."""
+        nonlocal segment_counter, current_speaker, fallback_buffer
+        if not fallback_buffer:
+            return
+            
+        chunk_bytes = bytes(fallback_buffer)
+        fallback_buffer.clear()
+        
+        num_samples = len(chunk_bytes) // BYTES_PER_SAMPLE
+        if num_samples == 0:
+            return
+
+        audio_array = np.frombuffer(chunk_bytes, dtype=np.int16).astype(np.float32)
+        audio_array = audio_array / 32768.0
+
+        current_speaker = _detect_speaker(audio_array, current_speaker, segment_counter)
+        lang_code = language if (language and language != "auto") else None
+        
+        segments = transcribe_audio(audio_array, language=lang_code)
+
+        for seg in segments:
+            text = seg.get("text", "").strip()
+            if not text:
+                continue
+
+            lower = text.lower()
+            if lower in ("thank you.", "thanks for watching.", "you", "...", "thank you for watching.", "bye.", "subscribe", "thanks."):
+                continue
+
+            segment_counter += 1
+            elapsed = time.monotonic() - start_time
+            response = {
+                "type": "transcript",
+                "data": {
+                    "text": text,
+                    "speaker": current_speaker,
+                    "timestamp": round(elapsed, 2),
+                    "is_final": False,
+                },
+            }
             try:
-                chunk_bytes = await audio_queue.get()
-                if chunk_bytes is None:
-                    break
-
-                num_samples = len(chunk_bytes) // BYTES_PER_SAMPLE
-                if num_samples == 0:
-                    continue
-
-                audio_array = np.frombuffer(chunk_bytes, dtype=np.int16).astype(
-                    np.float32
-                )
-                audio_array = audio_array / 32768.0  # Normalize to [-1, 1]
-
-                # Detect speaker from audio energy patterns
-                current_speaker = _detect_speaker(
-                    audio_array, current_speaker, segment_counter
-                )
-
-                # Run transcription
-                lang_code = language if (language and language != "auto") else None
-                segments = transcribe_audio(audio_array, language=lang_code)
-
-                for seg in segments:
-                    text = seg.get("text", "").strip()
-                    if not text:
-                        continue
-
-                    # Skip Whisper hallucinations (common artifacts)
-                    lower = text.lower()
-                    if lower in (
-                        "thank you.",
-                        "thanks for watching.",
-                        "you",
-                        "...",
-                        "thank you for watching.",
-                        "bye.",
-                        "subscribe",
-                        "thanks.",
-                    ):
-                        continue
-
-                    segment_counter += 1
-                    elapsed = time.monotonic() - start_time
-                    response = {
-                        "type": "transcript",
-                        "data": {
-                            "text": text,
-                            "speaker": current_speaker,
-                            "timestamp": round(elapsed, 2),
-                            "is_final": False,
-                        },
-                    }
-
-                    try:
-                        await websocket.send_json(response)
-                    except Exception:
-                        return
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("[%s] Audio processing error: %s", session_id, e)
-
-    processor_task = asyncio.create_task(process_audio_chunks())
+                await websocket.send_json(response)
+            except Exception:
+                pass
 
     # Heartbeat task to detect dead connections
     async def heartbeat() -> None:
-        """Send periodic ping to keep the connection alive."""
         while True:
             try:
                 await asyncio.sleep(30)
                 await websocket.send_json({"type": "ping", "data": {"ts": time.time()}})
+                if dg_ws and not dg_ws.closed:
+                    await dg_ws.send(json.dumps({"type": "KeepAlive"}))
             except Exception:
                 break
 
@@ -215,25 +239,23 @@ async def audio_websocket(
                     continue
 
                 raw_bytes = message["bytes"]
-                audio_buffer.extend(raw_bytes)
                 all_audio_data.extend(raw_bytes)
 
-                if len(audio_buffer) >= BUFFER_SIZE_BYTES:
+                if use_deepgram and dg_ws:
                     try:
-                        audio_queue.put_nowait(bytes(audio_buffer))
-                    except asyncio.QueueFull:
-                        logger.warning(
-                            "[%s] Audio queue full, dropping chunk", session_id
-                        )
-                    audio_buffer.clear()
+                        await dg_ws.send(raw_bytes)
+                    except Exception as e:
+                        logger.error("[%s] Failed to send to Deepgram: %s", session_id, e)
+                else:
+                    # Fallback buffering
+                    fallback_buffer.extend(raw_bytes)
+                    if len(fallback_buffer) >= FALLBACK_BUFFER_BYTES:
+                        await process_fallback_audio()
 
             elif "text" in message and message["text"]:
                 try:
                     control = json.loads(message["text"])
                 except json.JSONDecodeError:
-                    logger.warning(
-                        "[%s] Invalid JSON control message", session_id
-                    )
                     continue
 
                 msg_type = control.get("type", "")
@@ -242,30 +264,25 @@ async def audio_websocket(
                 if msg_type == "control":
                     if action == "pause":
                         is_paused = True
-                        logger.info("[%s] Audio paused", session_id)
-                        await websocket.send_json(
-                            {"type": "status", "data": {"status": "paused"}}
-                        )
+                        await websocket.send_json({"type": "status", "data": {"status": "paused"}})
 
                     elif action == "resume":
                         is_paused = False
-                        logger.info("[%s] Audio resumed", session_id)
-                        await websocket.send_json(
-                            {"type": "status", "data": {"status": "recording"}}
-                        )
+                        await websocket.send_json({"type": "status", "data": {"status": "recording"}})
 
                     elif action == "stop":
                         patient_id = control.get("patient_id", patient_id)
-                        logger.info(
-                            "[%s] Stop received, saving audio...", session_id
-                        )
+                        
+                        if not use_deepgram and len(fallback_buffer) > 0:
+                            await process_fallback_audio()
 
-                        if len(audio_buffer) > 0:
+                        # Close Deepgram connection gracefully
+                        if use_deepgram and dg_ws:
                             try:
-                                audio_queue.put_nowait(bytes(audio_buffer))
-                            except asyncio.QueueFull:
+                                await dg_ws.send(json.dumps({"type": "CloseStream"}))
+                                await asyncio.sleep(1) # give time for final transcripts
+                            except Exception:
                                 pass
-                            audio_buffer.clear()
 
                         if all_audio_data:
                             try:
@@ -275,44 +292,34 @@ async def audio_websocket(
                                     audio_data=bytes(all_audio_data),
                                     sample_rate=SAMPLE_RATE,
                                 )
-                                await websocket.send_json(
-                                    {
-                                        "type": "status",
-                                        "data": {
-                                            "status": "stopped",
-                                            "audio_url": file_url,
-                                            "segments_transcribed": segment_counter,
-                                        },
+                                await websocket.send_json({
+                                    "type": "status",
+                                    "data": {
+                                        "status": "stopped",
+                                        "audio_url": file_url,
+                                        "segments_transcribed": segment_counter,
                                     }
-                                )
+                                })
                             except Exception as e:
-                                logger.error(
-                                    "[%s] Failed to save audio: %s",
-                                    session_id,
-                                    e,
-                                )
-                                await websocket.send_json(
-                                    {
-                                        "type": "status",
-                                        "data": {
-                                            "status": "stopped",
-                                            "audio_url": "",
-                                            "segments_transcribed": segment_counter,
-                                            "error": str(e),
-                                        },
-                                    }
-                                )
-                        else:
-                            await websocket.send_json(
-                                {
+                                logger.error("[%s] Failed to save audio: %s", session_id, e)
+                                await websocket.send_json({
                                     "type": "status",
                                     "data": {
                                         "status": "stopped",
                                         "audio_url": "",
                                         "segments_transcribed": segment_counter,
-                                    },
+                                        "error": str(e),
+                                    }
+                                })
+                        else:
+                            await websocket.send_json({
+                                "type": "status",
+                                "data": {
+                                    "status": "stopped",
+                                    "audio_url": "",
+                                    "segments_transcribed": segment_counter,
                                 }
-                            )
+                            })
                         break
 
                     if "patient_id" in control:
@@ -324,18 +331,11 @@ async def audio_websocket(
         logger.error("[%s] WebSocket error: %s", session_id, e)
     finally:
         heartbeat_task.cancel()
-        try:
-            audio_queue.put_nowait(None)
-        except asyncio.QueueFull:
-            pass
-        processor_task.cancel()
-        try:
-            await processor_task
-        except asyncio.CancelledError:
-            pass
-        logger.info(
-            "[%s] WebSocket session ended (segments: %d)",
-            session_id,
-            segment_counter,
-        )
-
+        if dg_receive_task:
+            dg_receive_task.cancel()
+        if dg_ws:
+            try:
+                await dg_ws.close()
+            except Exception:
+                pass
+        logger.info("[%s] WebSocket session ended (segments: %d)", session_id, segment_counter)

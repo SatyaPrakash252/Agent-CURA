@@ -60,9 +60,10 @@ export default function Sidebar() {
   }, []);
 
   const services = [
+    { k: 'Deepgram', ok: backendOnline && health?.deepgram_configured },
     { k: 'Whisper', ok: backendOnline && health?.whisper_loaded },
     { k: 'Groq', ok: backendOnline && health?.groq_configured },
-    { k: 'Supabase', ok: backendOnline && health?.supabase_connected },
+    { k: 'Database', ok: backendOnline }, // We use SQLite fallback if Supabase is offline
   ];
 
   return (

@@ -17,7 +17,7 @@ interface AudioRecorderProps {
 
 export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk, isRecording, onToggleRecording, language }: AudioRecorderProps) {
   const { status, sendAudio, sendControl, connect, disconnect } = useWebSocket({
-    sessionId: isRecording ? sessionId : null,
+    sessionId: sessionId,
     onTranscriptChunk: onTranscriptChunk,
     language: language,
   });

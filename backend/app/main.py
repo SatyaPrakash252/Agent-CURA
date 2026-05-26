@@ -42,14 +42,21 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Project Cura API v2.0.0 starting up...")
 
-    # Pre-load Whisper model
-    try:
-        logger.info("Pre-loading Whisper model...")
-        load_model()
-        logger.info("Whisper model pre-loaded successfully.")
-    except Exception as e:
-        logger.error("Failed to pre-load Whisper model: %s", e)
-        logger.warning("Whisper model will be loaded on first transcription request.")
+    # Pre-load Whisper model only if Deepgram is NOT configured (Whisper is the fallback)
+    settings = get_settings()
+    has_deepgram = bool(settings.DEEPGRAM_API_KEY and len(settings.DEEPGRAM_API_KEY.strip()) > 0)
+
+    if has_deepgram:
+        logger.info("Deepgram API key detected — using Deepgram as primary STT engine.")
+        logger.info("Whisper model will lazy-load only if Deepgram fails (fallback mode).")
+    else:
+        try:
+            logger.info("No Deepgram API key — pre-loading local Whisper model...")
+            load_model()
+            logger.info("Whisper model pre-loaded successfully.")
+        except Exception as e:
+            logger.error("Failed to pre-load Whisper model: %s", e)
+            logger.warning("Whisper model will be loaded on first transcription request.")
 
     # Bootstrap admin user
     try:
@@ -127,12 +134,20 @@ async def health_check() -> HealthResponse:
         and settings.SUPABASE_KEY
         and len(settings.SUPABASE_URL) > 0
     )
+    deepgram_configured = bool(
+        settings.DEEPGRAM_API_KEY
+        and len(settings.DEEPGRAM_API_KEY.strip()) > 0
+    )
+
+    # Whisper is the fallback — if Deepgram is configured, STT is healthy regardless
+    whisper_status = is_model_loaded() or deepgram_configured
 
     return HealthResponse(
         status="healthy",
-        whisper_loaded=is_model_loaded(),
+        whisper_loaded=whisper_status,
         groq_configured=groq_configured,
         supabase_connected=supabase_connected,
+        deepgram_configured=deepgram_configured,
         version="2.0.0",
     )
 
