@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
+import { API_V1 } from '../../lib/constants';
 import type { ClinicalIntent } from '../../types';
 
 interface FHIRActionsProps {
+  sessionId?: string;
   intents: ClinicalIntent[];
   fhirBundle?: Record<string, unknown> | null;
 }
@@ -22,15 +24,31 @@ const TYPE_META: Record<string, { icon: string; label: string }> = {
   REFERRAL: { icon: '◈', label: 'Referral' },
 };
 
-export default function FHIRActions({ intents, fhirBundle }: FHIRActionsProps) {
+export default function FHIRActions({ sessionId, intents, fhirBundle }: FHIRActionsProps) {
   const [expandedJson, setExpandedJson] = useState(false);
   const [transmitted, setTransmitted] = useState<Set<number>>(new Set());
 
   const isDemo = intents.length === 0 && !fhirBundle;
   const data = intents.length === 0 ? DEMO_INTENTS : intents;
 
-  const handleTransmit = (index: number) => {
+  const handleTransmit = async (index: number) => {
+    // 1. Mark visually as transmitted immediately
     setTransmitted((prev) => new Set(prev).add(index));
+
+    // 2. Call backend to record the actual transmission of the FHIR bundle
+    if (sessionId && !isDemo) {
+      try {
+        const token = localStorage.getItem('cura_token');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        
+        await fetch(`${API_V1}/fhir/transmit/${sessionId}`, {
+          method: 'POST',
+          headers: headers,
+        });
+      } catch (err) {
+        console.error("Failed to transmit FHIR bundle:", err);
+      }
+    }
   };
 
   return (

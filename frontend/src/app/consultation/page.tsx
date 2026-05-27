@@ -635,7 +635,7 @@ export default function ConsultationPage() {
               <SOAPNote soap={result.soap} confidenceScore={result.confidence_score} isLoading={false} />
               <SafetyAlerts flags={result.safety_flags || []} />
               <BillingCodes codes={result.billing_codes || []} />
-              <FHIRActions intents={result.intents || []} fhirBundle={result.fhir_bundle} />
+              <FHIRActions sessionId={sessionId} intents={result.intents || []} fhirBundle={result.fhir_bundle} />
 
               {/* PDF Download */}
               <div className="surface p-5 flex items-center justify-between">
