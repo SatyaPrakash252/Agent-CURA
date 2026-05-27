@@ -2,17 +2,17 @@
 
 /* ===========================================
    Project Cura – Audio Recorder Hook
-   Microphone capture with PCM encoding
+   Zero-latency microphone capture with PCM encoding.
+   Uses AudioWorklet for instant audio processing.
    =========================================== */
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { AUDIO_SAMPLE_RATE, AUDIO_CHUNK_INTERVAL } from "@/lib/constants";
+import { AUDIO_SAMPLE_RATE } from "@/lib/constants";
 import type { PermissionState as MicPermState } from "@/types";
 
 interface UseAudioRecorderOptions {
   sendAudio: (data: ArrayBuffer) => void;
   sampleRate?: number;
-  chunkInterval?: number;
 }
 
 interface UseAudioRecorderReturn {
@@ -74,10 +74,23 @@ function downsampleBuffer(
   return result;
 }
 
+// Inline AudioWorklet processor code — runs in the audio thread for zero-latency capture
+const WORKLET_CODE = `
+class PCMProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input[0] && input[0].length > 0) {
+      this.port.postMessage(input[0]);
+    }
+    return true;
+  }
+}
+registerProcessor("pcm-processor", PCMProcessor);
+`;
+
 export function useAudioRecorder({
   sendAudio,
   sampleRate = AUDIO_SAMPLE_RATE,
-  chunkInterval = AUDIO_CHUNK_INTERVAL,
 }: UseAudioRecorderOptions): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -90,11 +103,9 @@ export function useAudioRecorder({
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioBufferRef = useRef<Float32Array[]>([]);
-  const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const waveformIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null
   );
@@ -121,27 +132,6 @@ export function useAudioRecorder({
         });
     }
   }, []);
-
-  const flushAudioBuffer = useCallback(() => {
-    if (audioBufferRef.current.length === 0 || isPausedRef.current) return;
-
-    const totalLength = audioBufferRef.current.reduce(
-      (sum, buf) => sum + buf.length,
-      0
-    );
-    const merged = new Float32Array(totalLength);
-    let offset = 0;
-    for (const buf of audioBufferRef.current) {
-      merged.set(buf, offset);
-      offset += buf.length;
-    }
-    audioBufferRef.current = [];
-
-    const inputSampleRate = audioContextRef.current?.sampleRate || 44100;
-    const downsampled = downsampleBuffer(merged, inputSampleRate, sampleRate);
-    const pcm = floatTo16BitPCM(downsampled);
-    sendAudioRef.current(pcm);
-  }, [sampleRate]);
 
   const startRecording = useCallback(async () => {
     setError(null);
@@ -174,22 +164,28 @@ export function useAudioRecorder({
       analyserRef.current = analyser;
       source.connect(analyser);
 
-      // ScriptProcessor for raw PCM data
-      const bufferSize = 4096;
-      const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-      processorRef.current = processor;
+      // --- AudioWorklet for zero-latency PCM capture ---
+      // Create a blob URL from inline processor code
+      const blob = new Blob([WORKLET_CODE], { type: "application/javascript" });
+      const workletUrl = URL.createObjectURL(blob);
+      await audioContext.audioWorklet.addModule(workletUrl);
+      URL.revokeObjectURL(workletUrl);
 
-      processor.onaudioprocess = (e: AudioProcessingEvent) => {
+      const workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
+      workletNodeRef.current = workletNode;
+
+      // Process audio chunks immediately as they arrive from the audio thread
+      const inputSampleRate = audioContext.sampleRate;
+      workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
         if (isPausedRef.current) return;
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBufferRef.current.push(new Float32Array(inputData));
+        const rawSamples = event.data;
+        const downsampled = downsampleBuffer(rawSamples, inputSampleRate, sampleRate);
+        const pcm = floatTo16BitPCM(downsampled);
+        sendAudioRef.current(pcm);
       };
 
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
-      // Flush buffer at regular intervals
-      flushIntervalRef.current = setInterval(flushAudioBuffer, chunkInterval);
+      source.connect(workletNode);
+      workletNode.connect(audioContext.destination);
 
       // Update waveform visualization
       waveformIntervalRef.current = setInterval(() => {
@@ -217,26 +213,19 @@ export function useAudioRecorder({
         setPermissionState("denied");
       }
     }
-  }, [sampleRate, chunkInterval, flushAudioBuffer]);
+  }, [sampleRate]);
 
   const stopRecording = useCallback(() => {
-    // Flush remaining audio
-    flushAudioBuffer();
-
     // Clear intervals
-    if (flushIntervalRef.current) {
-      clearInterval(flushIntervalRef.current);
-      flushIntervalRef.current = null;
-    }
     if (waveformIntervalRef.current) {
       clearInterval(waveformIntervalRef.current);
       waveformIntervalRef.current = null;
     }
 
     // Disconnect audio nodes
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
     }
     if (sourceRef.current) {
       sourceRef.current.disconnect();
@@ -259,12 +248,11 @@ export function useAudioRecorder({
       streamRef.current = null;
     }
 
-    audioBufferRef.current = [];
     setIsRecording(false);
     setIsPaused(false);
     isPausedRef.current = false;
     setWaveformData(new Array(30).fill(0));
-  }, [flushAudioBuffer]);
+  }, []);
 
   const pauseRecording = useCallback(() => {
     isPausedRef.current = true;
@@ -280,10 +268,9 @@ export function useAudioRecorder({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
       if (waveformIntervalRef.current)
         clearInterval(waveformIntervalRef.current);
-      if (processorRef.current) processorRef.current.disconnect();
+      if (workletNodeRef.current) workletNodeRef.current.disconnect();
       if (sourceRef.current) sourceRef.current.disconnect();
       if (audioContextRef.current) audioContextRef.current.close();
       if (streamRef.current)

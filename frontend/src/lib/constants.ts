@@ -34,7 +34,6 @@ export const API_V1 = `${API_BASE_URL}/api/v1`;
 
 // Audio configuration
 export const AUDIO_SAMPLE_RATE = 16000;
-export const AUDIO_CHUNK_INTERVAL = 100; // milliseconds — lower = faster streaming to Deepgram
 
 // Color palette
 export const Colors = {
