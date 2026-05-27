@@ -96,7 +96,7 @@ graph TD
 | **Auth** | JWT (PyJWT) with admin bootstrap |
 | **Interop** | HL7 FHIR R4, ICD-10-CM |
 | **Container** | Docker multi-stage builds + Docker Compose |
-| **Deployment** | Render.com (free tier) |
+| **Deployment** | Vercel (frontend) + Render.com (backend), free tier |
 
 ## 🐳 Docker Image Sizes
 
@@ -168,26 +168,37 @@ docker-compose logs -f backend
 docker-compose down
 ```
 
-## ☁️ Cloud Deployment (Render.com)
+## ☁️ Cloud Deployment (Vercel + Render)
 
-Project Cura includes a `render.yaml` blueprint for one-click deployment to [Render.com](https://render.com) (free tier).
+Project Cura uses a split deployment for optimal performance:
+- **Frontend** → [Vercel](https://vercel.com) (zero cold starts, global edge CDN, free tier)
+- **Backend** → [Render.com](https://render.com) (Docker support, free tier)
 
-### Steps:
-1. **Push to GitHub** — Ensure your repo is up to date
-2. **Connect to Render** — Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
-3. **Select Repository** — Choose your `Agent-CURA` repo
-4. **Configure Environment Variables** — Set these in the Render dashboard:
+### Step 1: Deploy Backend on Render
+1. Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+2. Connect your `Agent-CURA` GitHub repo
+3. Render auto-detects `render.yaml` and creates the backend service
+4. Set these environment variables in the Render dashboard:
    - `GROQ_API_KEY` — Your Groq API key
    - `SUPABASE_URL` — Your Supabase project URL
    - `SUPABASE_KEY` — Your Supabase anon key
    - `DEEPGRAM_API_KEY` — Your Deepgram API key
    - `ADMIN_PASSWORD` — Choose a secure admin password
-5. **Deploy** — Render will automatically build and deploy both services
+   - `CORS_ORIGINS` — Your Vercel frontend URL (e.g., `https://project-cura.vercel.app,http://localhost:3000`)
+5. Deploy and note your backend URL (e.g., `https://project-cura-backend.onrender.com`)
+
+### Step 2: Deploy Frontend on Vercel
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard) → **Add New Project**
+2. Import your `Agent-CURA` GitHub repo
+3. Set **Root Directory** to `frontend`
+4. Add environment variable:
+   - `NEXT_PUBLIC_API_BASE_URL` = your Render backend URL (e.g., `https://project-cura-backend.onrender.com`)
+5. Deploy — Vercel auto-detects Next.js and builds optimally
 
 ### Important Notes:
-- After the backend deploys, update the frontend's `NEXT_PUBLIC_API_BASE_URL` to point to your actual backend URL (e.g., `https://project-cura-backend.onrender.com`)
-- Update the backend's `CORS_ORIGINS` to include your frontend URL
-- Free tier services spin down after inactivity; first request may take 30-60 seconds
+- Render free tier services spin down after 15 min of inactivity; first request may take 30-60s to cold start
+- Vercel has zero cold starts — the frontend is always instant
+- Update `CORS_ORIGINS` on the backend whenever you change the frontend URL
 
 ## 🧪 Running Tests
 

@@ -1,6 +1,9 @@
 # =============================================================
-# Project Cura — Render.com Deployment Blueprint
+# Project Cura — Render.com Deployment Blueprint (Backend Only)
 # =============================================================
+# Frontend is deployed to Vercel for optimal Next.js performance.
+# This file deploys only the FastAPI backend as a Docker service.
+#
 # Deploy with: https://render.com/deploy?repo=<your-repo-url>
 # Or connect your GitHub repo manually in the Render dashboard.
 # =============================================================
@@ -39,20 +42,5 @@ services:
       - key: WHISPER_COMPUTE_TYPE
         value: int8
       - key: CORS_ORIGINS
-        value: https://project-cura-frontend.onrender.com,http://localhost:3000
+        sync: false
     healthCheckPath: /api/v1/health
-
-  # ── Frontend (Next.js Standalone) ──────────────────────────
-  - type: web
-    name: project-cura-frontend
-    runtime: docker
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
-    plan: free
-    envVars:
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://project-cura-backend.onrender.com
-    docker:
-      buildArgs:
-        NEXT_PUBLIC_API_BASE_URL: https://project-cura-backend.onrender.com
-    healthCheckPath: /
