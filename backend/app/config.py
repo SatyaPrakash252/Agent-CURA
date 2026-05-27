@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     MODEL_DOWNLOAD_ROOT: str = "models"
 
     # --- CORS ---
-    CORS_ORIGINS: list[str] = [
+    CORS_ORIGINS: Any = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
