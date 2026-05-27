@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: str | None = None
 
     # --- Whisper ---
-    WHISPER_MODEL_SIZE: str = "small"
+    WHISPER_MODEL_SIZE: str = "tiny"
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"
     MODEL_DOWNLOAD_ROOT: str = "models"

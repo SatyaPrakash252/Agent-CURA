@@ -36,7 +36,7 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: WHISPER_MODEL_SIZE
-        value: small
+        value: tiny
       - key: WHISPER_DEVICE
         value: cpu
       - key: WHISPER_COMPUTE_TYPE

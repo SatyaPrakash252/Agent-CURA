@@ -10,16 +10,16 @@ import io
 import wave
 import logging
 from pathlib import Path
+from typing import Any
 
 import httpx
 import numpy as np
-from faster_whisper import WhisperModel
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_whisper_model: WhisperModel | None = None
+_whisper_model: Any = None
 _model_loaded: bool = False
 
 
@@ -28,7 +28,7 @@ def is_model_loaded() -> bool:
     return _model_loaded
 
 
-def load_model() -> WhisperModel:
+def load_model() -> Any:
     """
     Load the local Whisper model (singleton). The model is loaded once and reused.
 
@@ -39,6 +39,8 @@ def load_model() -> WhisperModel:
 
     if _whisper_model is not None:
         return _whisper_model
+
+    from faster_whisper import WhisperModel
 
     settings = get_settings()
     model_root = Path(settings.MODEL_DOWNLOAD_ROOT).resolve()
