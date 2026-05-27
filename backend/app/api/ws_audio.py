@@ -87,7 +87,9 @@ async def audio_websocket(
     dg_ws = None
 
     if use_deepgram:
-        url = "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=16000&channels=1&diarize=true&smart_format=true&interim_results=true&endpointing=150&utterance_end_ms=1000&vad_events=true"
+        # Explicitly use model=nova-2 for Google/YouTube-level accuracy
+        # Set endpointing to 300ms for more natural sentence segmentation
+        url = "wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&diarize=true&smart_format=true&interim_results=true&endpointing=300&utterance_end_ms=1000&vad_events=true"
         if language and language != "auto":
             url += f"&language={language}"
         else:
@@ -206,7 +208,7 @@ async def audio_websocket(
                     "text": text,
                     "speaker": current_speaker,
                     "timestamp": round(elapsed, 2),
-                    "is_final": False,
+                    "is_final": True,  # Whisper fallback segments are final chunks
                 },
             }
             try:
