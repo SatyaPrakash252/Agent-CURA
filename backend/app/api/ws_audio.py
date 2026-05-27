@@ -96,7 +96,7 @@ async def audio_websocket(
         try:
             dg_ws = await websockets.connect(
                 url,
-                extra_headers={"Authorization": f"Token {dg_api_key}"}
+                additional_headers={"Authorization": f"Token {dg_api_key}"}
             )
             logger.info("[%s] Connected to Deepgram Streaming WebSocket", session_id)
         except Exception as e:

@@ -3,13 +3,24 @@
    =========================================== */
 
 const getApiBaseUrl = () => {
+  // 1. Explicit env var (set at build-time for cloud deployments)
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.length > 0 && envUrl !== "http://localhost:8000") {
+    return envUrl.replace(/\/+$/, ""); // strip trailing slash
+  }
+  // 2. Dynamic: same hostname, port 8000 (local Docker / dev)
   if (typeof window !== "undefined") {
     return `${window.location.protocol}//${window.location.hostname}:8000`;
   }
-  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  return envUrl || "http://127.0.0.1:8000";
 };
 
 const getWsBaseUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (envUrl && envUrl.length > 0 && envUrl !== "http://localhost:8000") {
+    // Convert http(s) URL to ws(s) URL
+    return envUrl.replace(/\/+$/, "").replace(/^http/, "ws");
+  }
   if (typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${protocol}//${window.location.hostname}:8000`;

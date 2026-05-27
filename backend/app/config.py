@@ -7,7 +7,9 @@ and provides a singleton settings instance via get_settings().
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     WHISPER_MODEL_SIZE: str = "small"
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"
-    MODEL_DOWNLOAD_ROOT: str = "../models"
+    MODEL_DOWNLOAD_ROOT: str = "models"
 
     # --- CORS ---
     CORS_ORIGINS: list[str] = [
@@ -35,6 +37,14 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        """Accept a comma-separated string from env or a list."""
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     # --- JWT Authentication ---
     JWT_SECRET_KEY: str = "change-this-to-a-random-64-char-string"

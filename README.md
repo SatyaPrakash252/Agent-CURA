@@ -23,75 +23,87 @@ Project Cura was developed as a flagship AI agent framework for the **Cognizant 
 
 ```mermaid
 graph TD
-    subgraph Frontend [Next.js 14 Web Client]
+    subgraph Frontend ["Next.js 14 Web Client (Standalone Docker — 218 MB)"]
         A[Sidebar/Navigation] --> B[Dashboard View]
         A --> C[Consultation Workspace]
         A --> D[Patients Directory]
         A --> E[Database Explorer]
         A --> F[History Log]
         
-        C --> G[AudioRecorder]
-        G --> H[ClinicalAgentOrb Waveform]
+        C --> G[AudioRecorder + ClinicalAgentOrb]
+        G -->|"PCM 16kHz WebSocket"| WS[WebSocket Stream]
         C --> I[LiveTranscript UI]
-        I --> J[Swap Speakers Control]
+        I --> J[Swap Speakers 🔁]
         C --> K[SOAP Note Workspace]
     end
 
-    subgraph Backend [FastAPI Server]
+    subgraph Backend ["FastAPI Server (Docker — 942 MB)"]
         L[CORS & Rate Limiter] --> M[JWT Auth Middleware]
-        M --> N[Versioned API Routers /api/v1]
+        M --> N["Versioned API Routers /api/v1"]
         
         N --> O[ws_audio Router]
         N --> P[consultation Router]
         N --> Q[patients Router]
         N --> R[database Router]
+        N --> AUTH[auth Router]
+        N --> FHIR_R[fhir Router]
         
-        O --> S{Speech-to-Text Pipeline}
-        S -- Primary --> T[Deepgram Nova-2 WebSockets]
-        S -- Fallback --> U[Local Whisper small CPU]
+        O --> S{"Speech-to-Text Engine"}
+        S -->|"Primary (Cloud)"| T["Deepgram Nova-2 WebSocket<br/>Sub-100ms latency"]
+        S -->|"Fallback (Local)"| U["faster-whisper small<br/>CPU-optimized int8"]
         
         P --> V[Orchestrator Agent Sequence]
-        V --> W[Scribe Agent Llama 3.3 70B]
-        V --> X[Auditor Agent Llama 3.1 8B]
-        V --> Y[Billing Agent Llama 3.1 8B]
+        V --> W["Scribe Agent<br/>Llama 3.3 70B via Groq"]
+        V --> X["Auditor Agent<br/>Llama 3.1 8B"]
+        V --> Y["Billing Agent<br/>Llama 3.1 8B"]
         
         V --> Z[CuraSafety Service]
-        Z --> AA[PII Redaction & Drug Audit]
+        Z --> AA["PII Redaction<br/>Drug Interaction Audit"]
         
-        V --> AB[FHIR Builder Bridge]
+        V --> AB[FHIR R4 Bundle Builder]
     end
 
-    subgraph Storage [Database & Persistence]
-        AC{Database Router}
-        AC -- Cloud Mode --> AD[Supabase PostgreSQL]
-        AC -- Fallback Mode --> AE[Local SQLite cura_local.db]
+    subgraph Storage ["Database & Persistence"]
+        AC{"Hybrid DB Router"}
+        AC -->|"Cloud Mode"| AD["Supabase PostgreSQL<br/>(with RLS policies)"]
+        AC -->|"Fallback Mode"| AE["SQLite cura_local.db<br/>(auto-created on startup)"]
     end
 
-    Frontend -- REST API & WebSockets --> Backend
-    Backend -- SQL Migrations --> Storage
+    WS -->|"Real-time audio"| O
+    Frontend -->|"REST API"| Backend
+    Backend -->|"SQL / HTTP"| Storage
 ```
 
 ## 🧠 Multi-Agent Pipeline
 
 | Agent | Model | Role |
 |-------|-------|------|
-| **Scribe** | Llama 3.3 70B | SOAP note generation with multilingual translation |
-| **Auditor** | Llama 3.1 8B | Clinical accuracy validation, hallucination detection |
-| **Billing** | Llama 3.1 8B | ICD-10-CM code extraction, intent classification |
-| **Diarizer** | Llama 3.1 8B | Speaker label refinement (Doctor vs Patient) |
+| **Scribe** | Llama 3.3 70B (Groq) | SOAP note generation with multilingual translation |
+| **Auditor** | Llama 3.1 8B (Groq) | Clinical accuracy validation, hallucination detection |
+| **Billing** | Llama 3.1 8B (Groq) | ICD-10-CM code extraction, intent classification |
+| **Diarizer** | Llama 3.1 8B (Groq) | Speaker label refinement (bypassed when Deepgram active) |
 
 ## ⚡ Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | Next.js 14, TypeScript, TailwindCSS |
-| **Backend** | FastAPI, Python 3.11 |
-| **Speech-to-Text** | Faster Whisper (local, CPU-optimized) |
+| **Backend** | FastAPI, Python 3.11, Uvicorn |
+| **Primary STT** | Deepgram Nova-2 (Cloud WebSocket, native diarization) |
+| **Fallback STT** | faster-whisper (local CPU, int8 quantized) |
 | **LLM** | Groq Cloud (Llama 3.3 70B + Llama 3.1 8B) |
-| **Database** | Supabase (PostgreSQL) |
-| **Auth** | JWT (PyJWT) |
-| **Interop** | HL7 FHIR R4 |
-| **Container** | Docker + Docker Compose |
+| **Database** | Supabase PostgreSQL (cloud) + SQLite (local fallback) |
+| **Auth** | JWT (PyJWT) with admin bootstrap |
+| **Interop** | HL7 FHIR R4, ICD-10-CM |
+| **Container** | Docker multi-stage builds + Docker Compose |
+| **Deployment** | Render.com (free tier) |
+
+## 🐳 Docker Image Sizes
+
+| Service | Image Size | Notes |
+|---------|-----------|-------|
+| **Frontend** | **218 MB** | Next.js standalone output, tree-shaken |
+| **Backend** | **942 MB** | Python 3.11-slim + faster-whisper + dependencies |
 
 ## 🚀 Quick Start
 
@@ -100,11 +112,12 @@ graph TD
 - Node.js 18+
 - Groq API key ([console.groq.com](https://console.groq.com))
 - Supabase project ([supabase.com](https://supabase.com))
+- Deepgram API key ([console.deepgram.com](https://console.deepgram.com)) — *optional but recommended*
 
 ### 1. Clone & Configure
 ```bash
-git clone <your-repo-url>
-cd Document\ Agent
+git clone https://github.com/SatyaPrakash252/Agent-CURA.git
+cd Agent-CURA
 cp .env.example .env
 # Edit .env with your actual API keys
 ```
@@ -115,6 +128,8 @@ Run the SQL migration in your Supabase SQL Editor:
 # Copy contents of backend/migrations/001_create_tables.sql
 # Paste into Supabase SQL Editor → Run
 ```
+
+> **Note:** If you skip this step, Project Cura automatically falls back to a local SQLite database (`cura_local.db`) — no setup required!
 
 ### 3. Start Backend
 ```bash
@@ -137,21 +152,42 @@ npm run dev
 - API Docs: http://localhost:8000/docs
 - Default login: `admin` / `admin123`
 
-## 🐳 Docker Deployment
+## 🐳 Docker Deployment (Local)
 
 ```bash
 # Build and start all services
-docker-compose up --build
+docker-compose up --build -d
 
-# Or in detached mode
-docker-compose up -d --build
-
-# Check status
+# Check status (both should show "healthy")
 docker-compose ps
 
 # View logs
 docker-compose logs -f backend
+
+# Stop
+docker-compose down
 ```
+
+## ☁️ Cloud Deployment (Render.com)
+
+Project Cura includes a `render.yaml` blueprint for one-click deployment to [Render.com](https://render.com) (free tier).
+
+### Steps:
+1. **Push to GitHub** — Ensure your repo is up to date
+2. **Connect to Render** — Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+3. **Select Repository** — Choose your `Agent-CURA` repo
+4. **Configure Environment Variables** — Set these in the Render dashboard:
+   - `GROQ_API_KEY` — Your Groq API key
+   - `SUPABASE_URL` — Your Supabase project URL
+   - `SUPABASE_KEY` — Your Supabase anon key
+   - `DEEPGRAM_API_KEY` — Your Deepgram API key
+   - `ADMIN_PASSWORD` — Choose a secure admin password
+5. **Deploy** — Render will automatically build and deploy both services
+
+### Important Notes:
+- After the backend deploys, update the frontend's `NEXT_PUBLIC_API_BASE_URL` to point to your actual backend URL (e.g., `https://project-cura-backend.onrender.com`)
+- Update the backend's `CORS_ORIGINS` to include your frontend URL
+- Free tier services spin down after inactivity; first request may take 30-60 seconds
 
 ## 🧪 Running Tests
 
@@ -161,10 +197,12 @@ pip install pytest pytest-asyncio httpx
 python -m pytest tests/ -v
 ```
 
+**Result:** 52 tests passing (safety, schemas, FHIR, routes)
+
 ## 📁 Project Structure
 
 ```
-Document Agent/
+Agent-CURA/
 ├── backend/
 │   ├── app/
 │   │   ├── agents/          # AI agents (Scribe, Auditor, Billing, Diarizer)
@@ -174,23 +212,25 @@ Document Agent/
 │   │   ├── services/        # Transcriber, Safety, FHIR, Drug Safety
 │   │   └── utils/           # ICD-10 lookup
 │   ├── migrations/          # SQL migration scripts
-│   ├── tests/               # pytest test suite
-│   ├── Dockerfile
+│   ├── tests/               # pytest test suite (52 tests)
+│   ├── Dockerfile           # Multi-stage Python 3.11-slim build
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── app/             # Next.js pages (dashboard, consultation, patients, history, login)
+│   │   ├── app/             # Next.js pages (dashboard, consultation, patients, history, login, database)
 │   │   ├── components/      # React components (clinical, consultation, layout, patients, ui)
-│   │   ├── hooks/           # Custom hooks (useAuth, useToast, useWebSocket, etc.)
+│   │   ├── hooks/           # Custom hooks (useAuth, useToast, useWebSocket)
 │   │   ├── lib/             # Utilities (API, constants, PDF generation)
 │   │   └── types/           # TypeScript type definitions
 │   ├── public/              # Static assets & PWA manifest
-│   ├── Dockerfile
+│   ├── Dockerfile           # Multi-stage Node 18-alpine standalone build
 │   └── package.json
 ├── .env.example             # Environment variable template
 ├── .gitignore
 ├── .dockerignore
-├── docker-compose.yml
+├── docker-compose.yml       # Local Docker orchestration
+├── render.yaml              # Render.com deployment blueprint
+├── SETUP_GUIDE.md           # Detailed setup instructions
 └── README.md
 ```
 
@@ -198,18 +238,20 @@ Document Agent/
 
 - **JWT Authentication** — Token-based auth with configurable expiry
 - **PII Redaction** — Automatic masking of Aadhaar, PAN, phone, email, names
-- **Rate Limiting** — Per-IP request throttling
+- **Rate Limiting** — Per-IP request throttling (30 req/min default)
 - **Clinical Safety** — High-risk term flagging with mandatory review
-- **Drug Interactions** — Automated drug-drug interaction checking
+- **Drug Interactions** — 12+ interaction pairs, dosage range validation
 - **Audit Logging** — All access and actions logged for compliance
-- **Non-root Docker** — Containers run as unprivileged users
+- **Non-root Docker** — Containers run as unprivileged `cura` user
 - **RLS Policies** — Row-Level Security on Supabase tables
+- **CORS Protection** — Configurable allowed origins via environment variable
 
 ## 📊 API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/auth/login` | Authenticate and get JWT |
+| `POST` | `/api/v1/auth/signup` | Doctor self-registration |
 | `GET` | `/api/v1/auth/me` | Current user info |
 | `GET` | `/api/v1/health` | System health check |
 | `POST` | `/api/v1/consultation/start` | Start consultation session |
@@ -220,8 +262,10 @@ Document Agent/
 | `GET` | `/api/v1/patients/` | List patients |
 | `POST` | `/api/v1/patients/` | Create patient |
 | `GET` | `/api/v1/patients/{id}/history` | Patient consultation history |
+| `GET` | `/api/v1/database/tables` | List database tables |
+| `GET` | `/api/v1/database/tables/{name}` | Browse table rows |
 | `POST` | `/api/v1/fhir/transmit/{session_id}` | Record FHIR transmission |
-| `WS` | `/ws/v1/audio/{session_id}` | Real-time audio streaming |
+| `WS` | `/ws/v1/audio/{session_id}` | Real-time audio streaming + transcription |
 
 ## 🌐 Environment Variables
 
@@ -230,10 +274,13 @@ Document Agent/
 | `GROQ_API_KEY` | ✅ | Groq API key for LLM access |
 | `SUPABASE_URL` | ✅ | Supabase project URL |
 | `SUPABASE_KEY` | ✅ | Supabase anon/service key |
-| `JWT_SECRET_KEY` | ✅ | Secret for JWT signing |
+| `DEEPGRAM_API_KEY` | ⭐ | Deepgram API key for cloud STT (highly recommended) |
+| `JWT_SECRET_KEY` | ✅ | Secret for JWT signing (auto-generated on Render) |
 | `WHISPER_MODEL_SIZE` | ❌ | `tiny`, `base`, `small` (default: `small`) |
 | `ADMIN_USERNAME` | ❌ | Default admin username (default: `admin`) |
 | `ADMIN_PASSWORD` | ❌ | Default admin password (default: `admin123`) |
+| `CORS_ORIGINS` | ❌ | Comma-separated allowed origins (default: localhost) |
+| `NEXT_PUBLIC_API_BASE_URL` | ❌ | Backend URL for cloud frontend builds |
 
 ## 📜 License
 

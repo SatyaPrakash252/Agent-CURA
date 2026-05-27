@@ -1,0 +1,58 @@
+# =============================================================
+# Project Cura — Render.com Deployment Blueprint
+# =============================================================
+# Deploy with: https://render.com/deploy?repo=<your-repo-url>
+# Or connect your GitHub repo manually in the Render dashboard.
+# =============================================================
+
+services:
+  # ── Backend (FastAPI + Deepgram + Whisper) ──────────────────
+  - type: web
+    name: project-cura-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRY_MINUTES
+        value: "480"
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: WHISPER_MODEL_SIZE
+        value: small
+      - key: WHISPER_DEVICE
+        value: cpu
+      - key: WHISPER_COMPUTE_TYPE
+        value: int8
+      - key: CORS_ORIGINS
+        value: https://project-cura-frontend.onrender.com,http://localhost:3000
+    healthCheckPath: /api/v1/health
+
+  # ── Frontend (Next.js Standalone) ──────────────────────────
+  - type: web
+    name: project-cura-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://project-cura-backend.onrender.com
+    docker:
+      buildArgs:
+        NEXT_PUBLIC_API_BASE_URL: https://project-cura-backend.onrender.com
+    healthCheckPath: /
