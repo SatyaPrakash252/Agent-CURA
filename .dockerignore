@@ -36,7 +36,8 @@ Dockerfile
 !README.md
 
 # Models (will be downloaded at runtime)
-models/
+/models/
+/backend/models/
 
 # OS
 .DS_Store

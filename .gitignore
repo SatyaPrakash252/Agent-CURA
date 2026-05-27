@@ -38,7 +38,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # --- Whisper Models (large binary files) ---
-models/
+/models/
+/backend/models/
 *.bin
 *.pt
 

@@ -1,0 +1,38 @@
+# ============================================================
+# Project Cura — Backend .dockerignore
+# ============================================================
+
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Whisper Models (Ignore root models inside backend context, but NOT app/models)
+/models/
+*.bin
+*.pt
+
+# SQLite Databases
+*.db
+cura_local.db
+
+# OS
+.DS_Store
+Thumbs.db
