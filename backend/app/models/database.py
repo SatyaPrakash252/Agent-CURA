@@ -1,15 +1,19 @@
 """
 Project Cura - Supabase Database Client with Local SQLite Fallback.
 
-Provides a transparent local SQLite fallback (cura_local.db) if Supabase is offline
-or host resolution fails (DNS address resolution error). Auto-registers patients
-during consultation finalized pipeline.
+Key design change: Instead of a permanent one-way _use_local_sqlite flag,
+every operation now dynamically tries Supabase first and falls back to SQLite
+per-operation. This ensures that if Supabase comes back online after a temporary
+outage, data automatically goes to Supabase again.
+
+The SQLite fallback ensures the app works even if Supabase is completely down.
 """
 
 import logging
 import os
 import sqlite3
 import json
+import time
 from datetime import datetime, timezone
 
 from supabase import Client, create_client
@@ -20,8 +24,10 @@ from app.models.schemas import ConsultationResult, PatientCreate
 logger = logging.getLogger(__name__)
 
 _supabase_client: Client | None = None
-_use_local_sqlite = False
 _local_db_initialized = False
+_supabase_available: bool | None = None  # None = not checked yet, True/False = last known state
+_supabase_last_check: float = 0.0
+_SUPABASE_RECHECK_INTERVAL = 120.0  # Re-check Supabase availability every 2 minutes
 
 DB_FILE = "cura_local.db"
 
@@ -34,7 +40,7 @@ def _init_local_db():
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        
+
         # Create consultations table
         c.execute("""
         CREATE TABLE IF NOT EXISTS consultations (
@@ -52,7 +58,7 @@ def _init_local_db():
             created_at TEXT
         )
         """)
-        
+
         # Create patients table
         c.execute("""
         CREATE TABLE IF NOT EXISTS patients (
@@ -66,7 +72,7 @@ def _init_local_db():
             created_at TEXT
         )
         """)
-        
+
         # Create audio_recordings table
         c.execute("""
         CREATE TABLE IF NOT EXISTS audio_recordings (
@@ -78,7 +84,7 @@ def _init_local_db():
             created_at TEXT
         )
         """)
-        
+
         # Create users table
         c.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -94,7 +100,7 @@ def _init_local_db():
             last_login TEXT
         )
         """)
-        
+
         # Create audit_log table
         c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -108,7 +114,7 @@ def _init_local_db():
             created_at TEXT
         )
         """)
-        
+
         # Create fhir_transmissions table
         c.execute("""
         CREATE TABLE IF NOT EXISTS fhir_transmissions (
@@ -121,7 +127,7 @@ def _init_local_db():
             created_at TEXT
         )
         """)
-        
+
         conn.commit()
         conn.close()
         _local_db_initialized = True
@@ -130,44 +136,45 @@ def _init_local_db():
         logger.error("Failed to initialize local SQLite database: %s", e)
 
 
-def check_supabase_connectivity() -> bool:
-    """Check Supabase DNS connectivity & schema to determine if local fallback is needed."""
-    global _use_local_sqlite
+def is_supabase_available() -> bool:
+    """
+    Dynamically check if Supabase is available. Caches the result for
+    _SUPABASE_RECHECK_INTERVAL seconds to avoid hammering the network.
+    """
+    global _supabase_available, _supabase_last_check
+
+    now = time.monotonic()
+
+    # Use cached result if within recheck interval
+    if _supabase_available is not None and (now - _supabase_last_check) < _SUPABASE_RECHECK_INTERVAL:
+        return _supabase_available
+
     settings = get_settings()
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-        logger.warning("Supabase credentials missing. Activating Local SQLite fallback.")
-        _use_local_sqlite = True
+        _supabase_available = False
+        _supabase_last_check = now
         return False
 
     try:
         from urllib.parse import urlparse
         import socket
         parsed = urlparse(settings.SUPABASE_URL)
-        # Attempt simple DNS hostname lookup
+        socket.setdefaulttimeout(5.0)
         socket.getaddrinfo(parsed.hostname, parsed.port or 443)
-        
-        # Verify if migrations have actually been run on Supabase!
-        # If the 'users' table is missing, we must fallback to local SQLite.
-        try:
-            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-            client.table("users").select("id").limit(1).execute()
-        except Exception as schema_err:
-            logger.warning(
-                "Supabase is online, but required tables are missing or not migrated (%s). "
-                "Activating Local SQLite Database Fallback (cura_local.db) for full sandbox stability!",
-                schema_err
-            )
-            _use_local_sqlite = True
-            return False
 
+        # Verify tables exist
+        client = get_supabase()
+        client.table("users").select("id").limit(1).execute()
+
+        _supabase_available = True
+        _supabase_last_check = now
+        if _supabase_available:
+            logger.info("Supabase connectivity confirmed — using cloud database.")
         return True
     except Exception as e:
-        logger.warning(
-            "Supabase hostname '%s' is unreachable/offline (%s). "
-            "Activating premium Local SQLite Database Fallback (cura_local.db) for full offline operation!",
-            settings.SUPABASE_URL, e
-        )
-        _use_local_sqlite = True
+        _supabase_available = False
+        _supabase_last_check = now
+        logger.warning("Supabase unavailable (%s) — using local SQLite fallback.", e)
         return False
 
 
@@ -180,17 +187,16 @@ def get_supabase() -> Client:
     return _supabase_client
 
 
-def _ensure_local_state():
-    """Ensure database state is checked and tables initialized."""
-    global _local_db_initialized
-    if not _local_db_initialized:
-        _init_local_db()
-        check_supabase_connectivity()
-
-
 def init_db():
     """Pre-initialize database tables and check Supabase connectivity at startup."""
-    _ensure_local_state()
+    _init_local_db()
+    # Initial Supabase check — result is cached
+    is_supabase_available()
+
+
+def get_db_mode() -> str:
+    """Return current database mode string for display purposes."""
+    return "Supabase (Cloud)" if is_supabase_available() else "SQLite (Local)"
 
 
 # ── Consultations ────────────────────────────────────────────
@@ -202,8 +208,6 @@ async def save_consultation(
     Save a complete consultation result to the 'consultations' table.
     Auto-registers patient in patients table if they do not exist.
     """
-    _ensure_local_state()
-
     # Check if patient exists, if not, auto-register them
     try:
         p_record = await get_patient(patient_id)
@@ -229,36 +233,8 @@ async def save_consultation(
         "fhir_bundle": result.fhir_bundle,
     }
 
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT INTO consultations (
-                session_id, patient_id, subjective, objective, assessment, plan,
-                raw_transcript, redacted_transcript, confidence_score, fhir_payload, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                session_id,
-                patient_id,
-                result.soap.subjective,
-                result.soap.objective,
-                result.soap.assessment,
-                result.soap.plan,
-                result.raw_transcript,
-                result.redacted_transcript,
-                result.confidence_score,
-                json.dumps(extended_data),
-                datetime.now(timezone.utc).isoformat()
-            ))
-            conn.commit()
-            conn.close()
-            logger.info("Saved consultation %s locally (SQLite)", session_id)
-            return {"session_id": session_id}
-        except Exception as e:
-            logger.error("Failed to save consultation locally: %s", e)
-            return None
-    else:
+    # Try Supabase first, fall back to SQLite
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -278,34 +254,43 @@ async def save_consultation(
             logger.info("Saved consultation %s for patient %s in Supabase", session_id, patient_id)
             return response.data[0] if response.data else None
         except Exception as e:
-            logger.error("Failed to save consultation %s: %s", session_id, e)
-            return None
+            logger.error("Supabase save failed for consultation %s: %s. Falling back to SQLite.", session_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO consultations (
+            session_id, patient_id, subjective, objective, assessment, plan,
+            raw_transcript, redacted_transcript, confidence_score, fhir_payload, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            session_id,
+            patient_id,
+            result.soap.subjective,
+            result.soap.objective,
+            result.soap.assessment,
+            result.soap.plan,
+            result.raw_transcript,
+            result.redacted_transcript,
+            result.confidence_score,
+            json.dumps(extended_data),
+            datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+        conn.close()
+        logger.info("Saved consultation %s locally (SQLite)", session_id)
+        return {"session_id": session_id}
+    except Exception as e:
+        logger.error("Failed to save consultation locally: %s", e)
+        return None
 
 
 async def get_consultation(session_id: str) -> dict | None:
     """Fetch a single consultation by session_id."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM consultations WHERE session_id = ?", (session_id,))
-            row = c.fetchone()
-            conn.close()
-            if row:
-                row_dict = dict(row)
-                try:
-                    row_dict["fhir_payload"] = json.loads(row_dict["fhir_payload"])
-                except Exception:
-                    row_dict["fhir_payload"] = {}
-                return _normalize_row(row_dict)
-            return None
-        except Exception as e:
-            logger.error("Failed to fetch consultation locally: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = (
@@ -333,35 +318,33 @@ async def get_consultation(session_id: str) -> dict | None:
                         return _normalize_row(row)
             return None
         except Exception as e:
-            logger.error("Failed to fetch consultation %s: %s", session_id, e)
-            return None
+            logger.error("Supabase fetch failed for consultation %s: %s. Trying SQLite.", session_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM consultations WHERE session_id = ?", (session_id,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            row_dict = dict(row)
+            try:
+                row_dict["fhir_payload"] = json.loads(row_dict["fhir_payload"])
+            except Exception:
+                row_dict["fhir_payload"] = {}
+            return _normalize_row(row_dict)
+        return None
+    except Exception as e:
+        logger.error("Failed to fetch consultation locally: %s", e)
+        return None
 
 
 async def get_recent_consultations(limit: int = 10) -> list[dict]:
     """Fetch the most recent consultations across all patients."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM consultations ORDER BY created_at DESC LIMIT ?", (limit,))
-            rows = c.fetchall()
-            conn.close()
-            results = []
-            for r in rows:
-                rd = dict(r)
-                try:
-                    rd["fhir_payload"] = json.loads(rd["fhir_payload"])
-                except Exception:
-                    rd["fhir_payload"] = {}
-                results.append(_normalize_row(rd))
-            return results
-        except Exception as e:
-            logger.error("Failed to fetch recent consultations locally: %s", e)
-            return []
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = (
@@ -375,8 +358,29 @@ async def get_recent_consultations(limit: int = 10) -> list[dict]:
                 return [_normalize_row(row) for row in response.data]
             return []
         except Exception as e:
-            logger.error("Failed to fetch recent consultations: %s", e)
-            return []
+            logger.error("Supabase recent consultations failed: %s. Trying SQLite.", e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM consultations ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = c.fetchall()
+        conn.close()
+        results = []
+        for r in rows:
+            rd = dict(r)
+            try:
+                rd["fhir_payload"] = json.loads(rd["fhir_payload"])
+            except Exception:
+                rd["fhir_payload"] = {}
+            results.append(_normalize_row(rd))
+        return results
+    except Exception as e:
+        logger.error("Failed to fetch recent consultations locally: %s", e)
+        return []
 
 
 def _normalize_row(row: dict) -> dict:
@@ -418,29 +422,7 @@ def _normalize_row(row: dict) -> dict:
 
 async def get_patient_history(patient_id: str) -> list[dict]:
     """Fetch all consultations for a patient, ordered by created_at descending."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM consultations WHERE patient_id = ? ORDER BY created_at DESC", (patient_id,))
-            rows = c.fetchall()
-            conn.close()
-            results = []
-            for r in rows:
-                rd = dict(r)
-                try:
-                    rd["fhir_payload"] = json.loads(rd["fhir_payload"])
-                except Exception:
-                    rd["fhir_payload"] = {}
-                results.append(_normalize_row(rd))
-            return results
-        except Exception as e:
-            logger.error("Failed to fetch history locally: %s", e)
-            return []
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = (
@@ -454,40 +436,36 @@ async def get_patient_history(patient_id: str) -> list[dict]:
                 return [_normalize_row(row) for row in response.data]
             return []
         except Exception as e:
-            logger.error("Failed to fetch history for patient %s: %s", patient_id, e)
-            return []
+            logger.error("Supabase history failed for %s: %s. Trying SQLite.", patient_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM consultations WHERE patient_id = ? ORDER BY created_at DESC", (patient_id,))
+        rows = c.fetchall()
+        conn.close()
+        results = []
+        for r in rows:
+            rd = dict(r)
+            try:
+                rd["fhir_payload"] = json.loads(rd["fhir_payload"])
+            except Exception:
+                rd["fhir_payload"] = {}
+            results.append(_normalize_row(rd))
+        return results
+    except Exception as e:
+        logger.error("Failed to fetch history locally: %s", e)
+        return []
 
 
 # ── Patients ─────────────────────────────────────────────────
 
 async def create_patient(patient: PatientCreate) -> dict | None:
     """Create a patient record in the patients table."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT OR REPLACE INTO patients (patient_id, name, age, gender, contact, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                patient.patient_id,
-                patient.name,
-                patient.age,
-                patient.gender,
-                patient.contact,
-                patient.notes,
-                datetime.now(timezone.utc).isoformat()
-            ))
-            conn.commit()
-            conn.close()
-            logger.info("Created/Updated patient %s locally (SQLite)", patient.patient_id)
-            return {"patient_id": patient.patient_id, "name": patient.name}
-        except Exception as e:
-            logger.error("Failed to save patient locally: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -503,27 +481,37 @@ async def create_patient(patient: PatientCreate) -> dict | None:
             logger.info("Created patient %s in Supabase", patient.patient_id)
             return response.data[0] if response.data else None
         except Exception as e:
-            logger.error("Failed to create patient %s: %s", patient.patient_id, e)
-            return None
+            logger.error("Supabase patient create failed for %s: %s. Falling back to SQLite.", patient.patient_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT OR REPLACE INTO patients (patient_id, name, age, gender, contact, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            patient.patient_id,
+            patient.name,
+            patient.age,
+            patient.gender,
+            patient.contact,
+            patient.notes,
+            datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+        conn.close()
+        logger.info("Created/Updated patient %s locally (SQLite)", patient.patient_id)
+        return {"patient_id": patient.patient_id, "name": patient.name}
+    except Exception as e:
+        logger.error("Failed to save patient locally: %s", e)
+        return None
 
 
 async def get_patient(patient_id: str) -> dict | None:
     """Fetch a single patient by patient_id."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
-            row = c.fetchone()
-            conn.close()
-            return dict(row) if row else None
-        except Exception as e:
-            logger.error("Failed to fetch patient locally: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = (
@@ -537,34 +525,26 @@ async def get_patient(patient_id: str) -> dict | None:
                 return response.data[0]
             return None
         except Exception as e:
-            logger.error("Failed to fetch patient %s: %s", patient_id, e)
-            return None
+            logger.error("Supabase patient fetch failed for %s: %s. Trying SQLite.", patient_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM patients WHERE patient_id = ?", (patient_id,))
+        row = c.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("Failed to fetch patient locally: %s", e)
+        return None
 
 
 async def list_patients(search: str = "", limit: int = 50) -> list[dict]:
     """List patients with optional search filtering."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            if search:
-                c.execute("""
-                SELECT * FROM patients 
-                WHERE name LIKE ? OR patient_id LIKE ? 
-                ORDER BY created_at DESC LIMIT ?
-                """, (f"%{search}%", f"%{search}%", limit))
-            else:
-                c.execute("SELECT * FROM patients ORDER BY created_at DESC LIMIT ?", (limit,))
-            rows = c.fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
-        except Exception as e:
-            logger.error("Failed to list patients locally: %s", e)
-            return []
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             query = client.table("patients").select("*")
@@ -577,31 +557,51 @@ async def list_patients(search: str = "", limit: int = 50) -> list[dict]:
                 return response.data
             return []
         except Exception as e:
-            logger.error("Failed to list patients: %s", e)
-            return []
+            logger.error("Supabase list patients failed: %s. Trying SQLite.", e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        if search:
+            c.execute("""
+            SELECT * FROM patients 
+            WHERE name LIKE ? OR patient_id LIKE ? 
+            ORDER BY created_at DESC LIMIT ?
+            """, (f"%{search}%", f"%{search}%", limit))
+        else:
+            c.execute("SELECT * FROM patients ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = c.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error("Failed to list patients locally: %s", e)
+        return []
 
 
 async def get_patient_count() -> int:
     """Get total number of unique patients."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM patients")
-            cnt = c.fetchone()[0]
-            conn.close()
-            return cnt
-        except Exception:
-            return 0
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = client.table("patients").select("id", count="exact").execute()
             return response.count or 0
         except Exception:
-            return 0
+            pass
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM patients")
+        cnt = c.fetchone()[0]
+        conn.close()
+        return cnt
+    except Exception:
+        return 0
 
 
 # ── Audio Recordings ─────────────────────────────────────────
@@ -610,24 +610,7 @@ async def save_audio_metadata(
     session_id: str, patient_id: str, file_url: str, duration_seconds: float
 ) -> dict | None:
     """Save audio recording metadata."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT INTO audio_recordings (session_id, patient_id, file_url, duration_seconds, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """, (session_id, patient_id, file_url, duration_seconds, datetime.now(timezone.utc).isoformat()))
-            conn.commit()
-            conn.close()
-            logger.info("Saved audio recording locally (SQLite)")
-            return {"session_id": session_id}
-        except Exception as e:
-            logger.error("Failed to save audio recording metadata locally: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -640,8 +623,24 @@ async def save_audio_metadata(
             response = client.table("audio_recordings").insert(record).execute()
             return response.data[0] if response.data else None
         except Exception as e:
-            logger.error("Failed to save audio metadata for %s: %s", session_id, e)
-            return None
+            logger.error("Supabase audio metadata save failed: %s. Falling back to SQLite.", e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO audio_recordings (session_id, patient_id, file_url, duration_seconds, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """, (session_id, patient_id, file_url, duration_seconds, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        logger.info("Saved audio recording locally (SQLite)")
+        return {"session_id": session_id}
+    except Exception as e:
+        logger.error("Failed to save audio recording metadata locally: %s", e)
+        return None
 
 
 # ── Audit Log ────────────────────────────────────────────────
@@ -655,29 +654,7 @@ async def log_audit(
     details: dict | None = None,
 ) -> None:
     """Record an audit log entry for compliance tracking."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT INTO audit_log (username, action, resource_type, resource_id, ip_address, details, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                username,
-                action,
-                resource_type,
-                resource_id,
-                ip_address,
-                json.dumps(details or {}),
-                datetime.now(timezone.utc).isoformat()
-            ))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error("Failed to save local audit log: %s", e)
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -690,46 +667,38 @@ async def log_audit(
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             client.table("audit_log").insert(record).execute()
+            return
         except Exception as e:
-            logger.error("Failed to write audit log: %s", e)
+            logger.error("Supabase audit log failed: %s. Falling back to SQLite.", e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO audit_log (username, action, resource_type, resource_id, ip_address, details, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            username,
+            action,
+            resource_type,
+            resource_id,
+            ip_address,
+            json.dumps(details or {}),
+            datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error("Failed to save local audit log: %s", e)
 
 
 # ── Users ────────────────────────────────────────────────────
 
 async def get_user_by_username(username: str) -> dict | None:
     """Fetch a user by username."""
-    global _use_local_sqlite
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,))
-            row = c.fetchone()
-            conn.close()
-            if row:
-                return dict(row)
-            
-            # fallback admin
-            settings = get_settings()
-            if username == settings.ADMIN_USERNAME:
-                import hashlib
-                admin_pwd_hash = hashlib.sha256(settings.ADMIN_PASSWORD.encode()).hexdigest()
-                return {
-                    "username": settings.ADMIN_USERNAME,
-                    "password_hash": admin_pwd_hash,
-                    "full_name": "Administrator",
-                    "role": "admin",
-                    "expertise": "General Administration",
-                    "credentials": "ADMIN-001"
-                }
-            return None
-        except Exception as e:
-            logger.error("Failed to get local user: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             response = (
@@ -742,50 +711,44 @@ async def get_user_by_username(username: str) -> dict | None:
             )
             if response.data:
                 return response.data[0]
-            
-            # Fallback to dev admin from settings if table is empty or query succeeded but returned nothing
-            settings = get_settings()
-            if username == settings.ADMIN_USERNAME:
-                import hashlib
-                admin_pwd_hash = hashlib.sha256(settings.ADMIN_PASSWORD.encode()).hexdigest()
-                return {
-                    "username": settings.ADMIN_USERNAME,
-                    "password_hash": admin_pwd_hash,
-                    "full_name": "Administrator",
-                    "role": "admin",
-                    "expertise": "General Administration",
-                    "credentials": "ADMIN-001"
-                }
-            return None
         except Exception as e:
-            logger.error("Failed to fetch user %s on Supabase: %s. Activating transparent SQLite fallback!", username, e)
-            _use_local_sqlite = True
-            return await get_user_by_username(username)
+            logger.error("Supabase user fetch failed for %s: %s. Trying SQLite.", username, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return dict(row)
+    except Exception as e:
+        logger.error("Failed to get local user: %s", e)
+
+    # Hardcoded admin fallback — always works
+    settings = get_settings()
+    if username == settings.ADMIN_USERNAME:
+        import hashlib
+        admin_pwd_hash = hashlib.sha256(settings.ADMIN_PASSWORD.encode()).hexdigest()
+        return {
+            "username": settings.ADMIN_USERNAME,
+            "password_hash": admin_pwd_hash,
+            "full_name": "Administrator",
+            "role": "admin",
+            "expertise": "General Administration",
+            "credentials": "ADMIN-001"
+        }
+    return None
 
 
 async def create_user(
     username: str, password_hash: str, full_name: str = "", role: str = "doctor", expertise: str = "", credentials: str = ""
 ) -> dict | None:
     """Create a new user record."""
-    global _use_local_sqlite
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT INTO users (username, password_hash, full_name, role, expertise, credentials, is_active, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-            """, (username, password_hash, full_name, role, expertise, credentials, datetime.now(timezone.utc).isoformat()))
-            conn.commit()
-            conn.close()
-            logger.info("Created local user %s (SQLite)", username)
-            return {"username": username, "full_name": full_name}
-        except Exception as e:
-            logger.error("Failed to create local user: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -801,32 +764,48 @@ async def create_user(
             response = client.table("users").insert(record).execute()
             return response.data[0] if response.data else None
         except Exception as e:
-            logger.error("Failed to create user %s on Supabase: %s. Activating transparent SQLite fallback!", username, e)
-            _use_local_sqlite = True
-            return await create_user(username, password_hash, full_name, role, expertise, credentials)
+            logger.error("Supabase user create failed for %s: %s. Falling back to SQLite.", username, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO users (username, password_hash, full_name, role, expertise, credentials, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+        """, (username, password_hash, full_name, role, expertise, credentials, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        logger.info("Created local user %s (SQLite)", username)
+        return {"username": username, "full_name": full_name}
+    except Exception as e:
+        logger.error("Failed to create local user: %s", e)
+        return None
 
 
 async def update_user_last_login(username: str) -> None:
     """Update the last_login timestamp for a user."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("UPDATE users SET last_login = ? WHERE username = ?", (datetime.now(timezone.utc).isoformat(), username))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error("Failed to update last login locally: %s", e)
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             client.table("users").update(
                 {"last_login": datetime.now(timezone.utc).isoformat()}
             ).eq("username", username).execute()
+            return
         except Exception as e:
-            logger.error("Failed to update last_login for %s: %s", username, e)
+            logger.error("Supabase last_login update failed for %s: %s", username, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("UPDATE users SET last_login = ? WHERE username = ?", (datetime.now(timezone.utc).isoformat(), username))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error("Failed to update last login locally: %s", e)
 
 
 # ── FHIR Transmissions ──────────────────────────────────────
@@ -835,23 +814,7 @@ async def save_fhir_transmission(
     session_id: str, patient_id: str, bundle: dict
 ) -> dict | None:
     """Save a FHIR transmission record."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("""
-            INSERT INTO fhir_transmissions (session_id, patient_id, bundle, status, transmitted_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """, (session_id, patient_id, json.dumps(bundle), "transmitted", datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()))
-            conn.commit()
-            conn.close()
-            return {"session_id": session_id}
-        except Exception as e:
-            logger.error("Failed to save local FHIR transmission: %s", e)
-            return None
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
             record = {
@@ -865,48 +828,30 @@ async def save_fhir_transmission(
             response = client.table("fhir_transmissions").insert(record).execute()
             return response.data[0] if response.data else None
         except Exception as e:
-            logger.error("Failed to save FHIR transmission for %s: %s", session_id, e)
-            return None
+            logger.error("Supabase FHIR save failed for %s: %s. Falling back to SQLite.", session_id, e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("""
+        INSERT INTO fhir_transmissions (session_id, patient_id, bundle, status, transmitted_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (session_id, patient_id, json.dumps(bundle), "transmitted", datetime.now(timezone.utc).isoformat(), datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        return {"session_id": session_id}
+    except Exception as e:
+        logger.error("Failed to save local FHIR transmission: %s", e)
+        return None
 
 
 # ── Dashboard Stats ──────────────────────────────────────────
 
 async def get_dashboard_stats() -> dict:
     """Aggregate statistics for the dashboard."""
-    _ensure_local_state()
-
-    if _use_local_sqlite:
-        try:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            
-            c.execute("SELECT COUNT(*) FROM patients")
-            p_cnt = c.fetchone()[0]
-            
-            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-            c.execute("SELECT COUNT(*) FROM consultations WHERE created_at >= ?", (today_start,))
-            c_cnt = c.fetchone()[0]
-            
-            c.execute("SELECT confidence_score FROM consultations ORDER BY created_at DESC LIMIT 50")
-            rows = c.fetchall()
-            conn.close()
-            
-            scores = [r[0] for r in rows if r[0]]
-            avg_conf = round(sum(scores) / len(scores), 1) if scores else 0.0
-            
-            return {
-                "patient_count": p_cnt,
-                "today_sessions": c_cnt,
-                "avg_confidence": avg_conf
-            }
-        except Exception as e:
-            logger.error("Failed to fetch dashboard stats locally: %s", e)
-            return {
-                "patient_count": 0,
-                "today_sessions": 0,
-                "avg_confidence": 0
-            }
-    else:
+    if is_supabase_available():
         try:
             client = get_supabase()
 
@@ -947,9 +892,37 @@ async def get_dashboard_stats() -> dict:
                 "avg_confidence": avg_confidence,
             }
         except Exception as e:
-            logger.error("Failed to fetch dashboard stats: %s", e)
-            return {
-                "patient_count": 0,
-                "today_sessions": 0,
-                "avg_confidence": 0,
-            }
+            logger.error("Supabase dashboard stats failed: %s. Trying SQLite.", e)
+
+    # SQLite fallback
+    try:
+        _init_local_db()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+
+        c.execute("SELECT COUNT(*) FROM patients")
+        p_cnt = c.fetchone()[0]
+
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        c.execute("SELECT COUNT(*) FROM consultations WHERE created_at >= ?", (today_start,))
+        c_cnt = c.fetchone()[0]
+
+        c.execute("SELECT confidence_score FROM consultations ORDER BY created_at DESC LIMIT 50")
+        rows = c.fetchall()
+        conn.close()
+
+        scores = [r[0] for r in rows if r[0]]
+        avg_conf = round(sum(scores) / len(scores), 1) if scores else 0.0
+
+        return {
+            "patient_count": p_cnt,
+            "today_sessions": c_cnt,
+            "avg_confidence": avg_conf
+        }
+    except Exception as e:
+        logger.error("Failed to fetch dashboard stats locally: %s", e)
+        return {
+            "patient_count": 0,
+            "today_sessions": 0,
+            "avg_confidence": 0
+        }

@@ -39,29 +39,60 @@ export default function DashboardPage() {
     const token = localStorage.getItem('cura_token');
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
+    // Health check with retry (handles Render free tier cold starts)
+    const checkHealth = async (retries = 3, delay = 3000): Promise<boolean> => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(`${API_V1}/health`, { signal: AbortSignal.timeout(10000) });
+          if (res.ok) return true;
+        } catch {}
+        if (i < retries - 1) {
+          await new Promise(r => setTimeout(r, delay));
+          delay *= 2; // exponential backoff: 3s, 6s, 12s
+        }
+      }
+      return false;
+    };
+
     const load = async () => {
       try {
-        const [healthRes, statsRes, recentRes] = await Promise.allSettled([
-          fetch(`${API_V1}/health`),
-          fetch(`${API_V1}/consultation/stats/dashboard`, { headers }),
-          fetch(`${API_V1}/consultation/`, { headers }),
-        ]);
+        // Health check with retries first
+        const isOnline = await checkHealth();
+        setOnline(isOnline);
 
-        if (healthRes.status === 'fulfilled' && healthRes.value.ok) setOnline(true);
+        if (isOnline) {
+          // Only fetch data if backend is reachable
+          const [statsRes, recentRes] = await Promise.allSettled([
+            fetch(`${API_V1}/consultation/stats/dashboard`, { headers }),
+            fetch(`${API_V1}/consultation/`, { headers }),
+          ]);
 
-        if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
-          const d = await statsRes.value.json();
-          setStats(d);
-        }
+          if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+            const d = await statsRes.value.json();
+            setStats(d);
+          }
 
-        if (recentRes.status === 'fulfilled' && recentRes.value.ok) {
-          const d = await recentRes.value.json();
-          if (Array.isArray(d)) setRecent(d.slice(0, 8));
+          if (recentRes.status === 'fulfilled' && recentRes.value.ok) {
+            const d = await recentRes.value.json();
+            if (Array.isArray(d)) setRecent(d.slice(0, 8));
+          }
         }
       } catch {}
       setLoading(false);
     };
     load();
+
+    // Periodic health polling every 60s (detects Render wake-ups)
+    const healthPoll = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_V1}/health`, { signal: AbortSignal.timeout(8000) });
+        setOnline(res.ok);
+      } catch {
+        setOnline(false);
+      }
+    }, 60000);
+
+    return () => clearInterval(healthPoll);
   }, []);
 
   const formatTime = (dateStr: string) => {

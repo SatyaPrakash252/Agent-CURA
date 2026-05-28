@@ -16,7 +16,7 @@ interface AudioRecorderProps {
 }
 
 export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk, isRecording, onToggleRecording, language }: AudioRecorderProps) {
-  const { status, sendAudio, sendControl, connect, disconnect } = useWebSocket({
+  const { status, sttEngine, sendAudio, sendControl, connect, disconnect } = useWebSocket({
     sessionId: sessionId,
     onTranscriptChunk: onTranscriptChunk,
     language: language,
@@ -64,6 +64,10 @@ export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk,
     }
   };
 
+  // Determine STT engine display
+  const sttDisplay = sttEngine === 'reconnecting' ? 'RECONNECTING' : sttEngine?.toUpperCase() || 'DEEPGRAM';
+  const sttColor = sttEngine === 'reconnecting' ? 'text-amber-400' : sttEngine === 'whisper' ? 'text-orange-400' : 'text-[#10b981]';
+
   return (
     <div className="space-y-5 animate-in">
       {/* Scribe AI Agent Holographic Portal (Canvas & SVG Visualizer) */}
@@ -98,6 +102,17 @@ export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk,
         </span>
       </div>
 
+      {/* STT Reconnection Banner */}
+      {isRecording && sttEngine === 'reconnecting' && (
+        <div className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 animate-pulse">
+          <svg className="w-4 h-4 text-amber-400 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-[11px] font-mono text-amber-400 font-semibold">Reconnecting to STT engine… Transcription will resume automatically.</span>
+        </div>
+      )}
+
       {/* Hardware / Network Telemetry indicators */}
       <div className="flex items-center justify-center gap-4 text-[10.5px] font-mono text-[var(--text-dim)] border-t border-[var(--border)] pt-3.5">
         <span className="flex items-center gap-1.5">
@@ -106,8 +121,13 @@ export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk,
         </span>
         <span className="text-zinc-800">•</span>
         <span className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-[#10b981] animate-pulse' : 'bg-zinc-600'}`} />
-          WEB_SOCKET: {status.toUpperCase()}
+          <span className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-[#10b981] animate-pulse' : status === 'reconnecting' ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+          WS: {status.toUpperCase()}
+        </span>
+        <span className="text-zinc-800">•</span>
+        <span className={`flex items-center gap-1.5 ${sttColor}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${sttEngine === 'reconnecting' ? 'bg-amber-400 animate-pulse' : sttEngine === 'whisper' ? 'bg-orange-400' : 'bg-[#10b981]'}`} />
+          STT: {sttDisplay}
         </span>
       </div>
 
@@ -117,3 +137,4 @@ export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk,
     </div>
   );
 }
+

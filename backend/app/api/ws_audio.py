@@ -4,6 +4,12 @@ Project Cura - WebSocket Audio Endpoint.
 Accepts streaming audio over WebSocket, streams directly to Deepgram WebSocket
 for instant transcription, and returns real-time transcript updates.
 Falls back to local Whisper buffering if Deepgram is unavailable.
+
+Key resilience features:
+- Auto-reconnects to Deepgram if the connection drops mid-session (up to 3 retries)
+- Detects dead Deepgram sockets before sending audio data
+- Notifies the frontend of connection state changes
+- Heartbeat every 15s to detect stale connections early
 """
 
 import asyncio
@@ -32,6 +38,10 @@ FALLBACK_BUFFER_BYTES = int(SAMPLE_RATE * FALLBACK_BUFFER_SECONDS * BYTES_PER_SA
 # Speaker diarization - energy-based (only for fallback)
 SILENCE_ENERGY_THRESHOLD = 0.02
 SPEAKER_CHANGE_SILENCE_MS = 800
+
+# Deepgram reconnection settings
+MAX_DG_RECONNECT_ATTEMPTS = 3
+DG_RECONNECT_BASE_DELAY = 1.0  # seconds
 
 
 def _detect_speaker(
@@ -72,6 +82,21 @@ def _detect_speaker(
     return prev_speaker
 
 
+def _build_deepgram_url(language: str | None) -> str:
+    """Build the Deepgram WebSocket URL with all parameters."""
+    url = (
+        "wss://api.deepgram.com/v1/listen?"
+        "model=nova-2&encoding=linear16&sample_rate=16000&channels=1"
+        "&diarize=true&smart_format=true&interim_results=true"
+        "&endpointing=300&utterance_end_ms=1000&vad_events=true"
+    )
+    if language and language != "auto":
+        url += f"&language={language}"
+    else:
+        url += "&detect_language=true"
+    return url
+
+
 @router.websocket("/ws/v1/audio/{session_id}")
 async def audio_websocket(
     websocket: WebSocket,
@@ -84,26 +109,121 @@ async def audio_websocket(
     settings = get_settings()
     dg_api_key = settings.DEEPGRAM_API_KEY
     use_deepgram = bool(dg_api_key and len(dg_api_key.strip()) > 0)
-    dg_ws = None
 
-    if use_deepgram:
-        # Explicitly use model=nova-2 for Google/YouTube-level accuracy
-        # Set endpointing to 300ms for more natural sentence segmentation
-        url = "wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&diarize=true&smart_format=true&interim_results=true&endpointing=300&utterance_end_ms=1000&vad_events=true"
-        if language and language != "auto":
-            url += f"&language={language}"
-        else:
-            url += "&detect_language=true"
+    # Mutable state shared across tasks
+    dg_ws = None
+    dg_receive_task = None
+    dg_reconnect_count = 0
+    dg_lock = asyncio.Lock()  # Protects dg_ws during reconnection
+    is_reconnecting = False
+
+    async def connect_deepgram() -> bool:
+        """Connect (or reconnect) to Deepgram WebSocket. Returns True on success."""
+        nonlocal dg_ws, dg_receive_task, dg_reconnect_count, is_reconnecting
+
+        if not use_deepgram:
+            return False
+
+        url = _build_deepgram_url(language)
+        try:
+            is_reconnecting = True
+            dg_ws = await asyncio.wait_for(
+                websockets.connect(
+                    url,
+                    additional_headers={"Authorization": f"Token {dg_api_key}"},
+                    ping_interval=20,
+                    ping_timeout=10,
+                ),
+                timeout=10.0,
+            )
+            is_reconnecting = False
+            logger.info("[%s] Connected to Deepgram WebSocket (attempt %d)", session_id, dg_reconnect_count + 1)
+
+            # Start the receive task for this new connection
+            if dg_receive_task and not dg_receive_task.done():
+                dg_receive_task.cancel()
+            dg_receive_task = asyncio.create_task(receive_deepgram_transcripts())
+
+            # Notify frontend that connection is restored
+            try:
+                await websocket.send_json({
+                    "type": "status",
+                    "data": {"status": "connected", "stt_engine": "deepgram"}
+                })
+            except Exception:
+                pass
+
+            return True
+        except Exception as e:
+            is_reconnecting = False
+            logger.error("[%s] Deepgram connection failed (attempt %d): %s", session_id, dg_reconnect_count + 1, e)
+            dg_ws = None
+            return False
+
+    async def reconnect_deepgram() -> bool:
+        """Attempt to reconnect to Deepgram with exponential backoff."""
+        nonlocal dg_reconnect_count, dg_ws
+
+        async with dg_lock:
+            # Check if another coroutine already reconnected
+            if dg_ws and not dg_ws.closed:
+                return True
+
+            for attempt in range(MAX_DG_RECONNECT_ATTEMPTS):
+                dg_reconnect_count += 1
+                delay = DG_RECONNECT_BASE_DELAY * (2 ** attempt)
+                logger.info("[%s] Reconnecting to Deepgram in %.1fs (attempt %d/%d)...",
+                            session_id, delay, attempt + 1, MAX_DG_RECONNECT_ATTEMPTS)
+
+                # Notify frontend of reconnection attempt
+                try:
+                    await websocket.send_json({
+                        "type": "status",
+                        "data": {"status": "reconnecting", "attempt": attempt + 1}
+                    })
+                except Exception:
+                    pass
+
+                await asyncio.sleep(delay)
+
+                if await connect_deepgram():
+                    return True
+
+            # All attempts failed — fall back to local Whisper for rest of session
+            logger.error("[%s] Deepgram reconnection exhausted. Falling back to local Whisper.", session_id)
+            try:
+                await websocket.send_json({
+                    "type": "status",
+                    "data": {"status": "fallback", "stt_engine": "whisper"}
+                })
+            except Exception:
+                pass
+            return False
+
+    async def send_to_deepgram(data: bytes) -> bool:
+        """Send audio data to Deepgram, handling dead sockets gracefully."""
+        nonlocal dg_ws
+
+        if dg_ws is None or dg_ws.closed:
+            # Socket is dead — attempt reconnection
+            success = await reconnect_deepgram()
+            if not success:
+                return False
 
         try:
-            dg_ws = await websockets.connect(
-                url,
-                additional_headers={"Authorization": f"Token {dg_api_key}"}
-            )
-            logger.info("[%s] Connected to Deepgram Streaming WebSocket", session_id)
+            await dg_ws.send(data)
+            return True
         except Exception as e:
-            logger.error("[%s] Deepgram WebSocket connection failed: %s. Falling back to local.", session_id, e)
-            use_deepgram = False
+            logger.warning("[%s] Deepgram send failed: %s. Triggering reconnect.", session_id, e)
+            dg_ws = None
+            success = await reconnect_deepgram()
+            if success:
+                try:
+                    await dg_ws.send(data)
+                    return True
+                except Exception:
+                    return False
+            return False
 
     all_audio_data = bytearray()
     fallback_buffer = bytearray()
@@ -112,16 +232,25 @@ async def audio_websocket(
     segment_counter = 0
     start_time = time.monotonic()
     current_speaker = "Doctor"
-    speaker_map = {} # Maps Deepgram speaker ID to "Doctor" or "Patient"
+    speaker_map = {}  # Maps Deepgram speaker ID to "Doctor" or "Patient"
 
     async def receive_deepgram_transcripts():
         """Listen for Deepgram responses and forward them to the frontend."""
         nonlocal segment_counter
         try:
             while dg_ws and not dg_ws.closed:
-                res = await dg_ws.recv()
+                try:
+                    res = await asyncio.wait_for(dg_ws.recv(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    # No data in 30s — Deepgram may be idle, send keepalive
+                    try:
+                        await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+                    except Exception:
+                        break
+                    continue
+
                 data = json.loads(res)
-                
+
                 if data.get("type") == "Results":
                     channel = data.get("channel", {})
                     alternatives = channel.get("alternatives", [])
@@ -149,7 +278,7 @@ async def audio_websocket(
                         if is_final:
                             segment_counter += 1
                         elapsed = time.monotonic() - start_time
-                        
+
                         response = {
                             "type": "transcript",
                             "data": {
@@ -163,22 +292,31 @@ async def audio_websocket(
                             await websocket.send_json(response)
                         except Exception:
                             break
+
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning("[%s] Deepgram WebSocket closed: code=%s reason=%s", session_id, e.code, e.reason)
         except Exception as e:
             logger.error("[%s] Deepgram receive error: %s", session_id, e)
 
-    dg_receive_task = None
-    if use_deepgram and dg_ws:
-        dg_receive_task = asyncio.create_task(receive_deepgram_transcripts())
+        # When this task ends, mark dg_ws as None so the sender triggers reconnect
+        logger.info("[%s] Deepgram receive task ended — will reconnect on next audio chunk", session_id)
+
+    # Initial Deepgram connection
+    if use_deepgram:
+        await connect_deepgram()
+        if dg_ws is None:
+            use_deepgram = False
+            logger.warning("[%s] Initial Deepgram connection failed. Starting in Whisper-only mode.", session_id)
 
     async def process_fallback_audio():
         """Fallback processing using Local Whisper REST if Deepgram fails."""
         nonlocal segment_counter, current_speaker, fallback_buffer
         if not fallback_buffer:
             return
-            
+
         chunk_bytes = bytes(fallback_buffer)
         fallback_buffer.clear()
-        
+
         num_samples = len(chunk_bytes) // BYTES_PER_SAMPLE
         if num_samples == 0:
             return
@@ -188,7 +326,7 @@ async def audio_websocket(
 
         current_speaker = _detect_speaker(audio_array, current_speaker, segment_counter)
         lang_code = language if (language and language != "auto") else None
-        
+
         segments = transcribe_audio(audio_array, language=lang_code)
 
         for seg in segments:
@@ -216,14 +354,18 @@ async def audio_websocket(
             except Exception:
                 pass
 
-    # Heartbeat task to detect dead connections
+    # Heartbeat task — 15s interval for faster dead-connection detection
     async def heartbeat() -> None:
         while True:
             try:
-                await asyncio.sleep(30)
+                await asyncio.sleep(15)
                 await websocket.send_json({"type": "ping", "data": {"ts": time.time()}})
+                # Send keepalive to Deepgram too
                 if dg_ws and not dg_ws.closed:
-                    await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+                    try:
+                        await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+                    except Exception:
+                        pass
             except Exception:
                 break
 
@@ -243,11 +385,14 @@ async def audio_websocket(
                 raw_bytes = message["bytes"]
                 all_audio_data.extend(raw_bytes)
 
-                if use_deepgram and dg_ws:
-                    try:
-                        await dg_ws.send(raw_bytes)
-                    except Exception as e:
-                        logger.error("[%s] Failed to send to Deepgram: %s", session_id, e)
+                if use_deepgram:
+                    sent = await send_to_deepgram(raw_bytes)
+                    if not sent:
+                        # Deepgram permanently failed — switch to fallback for rest of session
+                        use_deepgram = False
+                        fallback_buffer.extend(raw_bytes)
+                        if len(fallback_buffer) >= FALLBACK_BUFFER_BYTES:
+                            await process_fallback_audio()
                 else:
                     # Fallback buffering
                     fallback_buffer.extend(raw_bytes)
@@ -274,15 +419,15 @@ async def audio_websocket(
 
                     elif action == "stop":
                         patient_id = control.get("patient_id", patient_id)
-                        
+
                         if not use_deepgram and len(fallback_buffer) > 0:
                             await process_fallback_audio()
 
                         # Close Deepgram connection gracefully
-                        if use_deepgram and dg_ws:
+                        if dg_ws and not dg_ws.closed:
                             try:
                                 await dg_ws.send(json.dumps({"type": "CloseStream"}))
-                                await asyncio.sleep(1) # give time for final transcripts
+                                await asyncio.sleep(1.5)  # give time for final transcripts
                             except Exception:
                                 pass
 
@@ -326,6 +471,9 @@ async def audio_websocket(
 
                     if "patient_id" in control:
                         patient_id = control["patient_id"]
+
+                elif msg_type == "pong":
+                    pass  # Client responded to heartbeat — connection is alive
 
     except WebSocketDisconnect:
         logger.info("[%s] WebSocket disconnected", session_id)

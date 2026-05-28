@@ -19,7 +19,8 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<WSStatus>('disconnected');
-  const maxReconnectAttempts = 5;
+  const [sttEngine, setSttEngine] = useState<string>('deepgram');
+  const maxReconnectAttempts = 10; // Increased from 5 for long sessions
   const baseDelay = 1000; // 1 second
 
   const updateStatus = useCallback((newStatus: WSStatus) => {
@@ -61,7 +62,20 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
               ws.send(JSON.stringify({ type: 'pong', data: { ts: data.data?.ts } }));
             } catch {}
           } else if (data.type === 'status') {
-            onStatusChange?.(data.data?.status || 'unknown');
+            const statusData = data.data;
+            if (statusData?.status === 'reconnecting') {
+              // Backend is reconnecting to Deepgram — keep recording, it'll resume
+              setSttEngine('reconnecting');
+              onStatusChange?.('reconnecting_stt');
+            } else if (statusData?.status === 'connected' && statusData?.stt_engine) {
+              setSttEngine(statusData.stt_engine);
+              onStatusChange?.('connected');
+            } else if (statusData?.status === 'fallback') {
+              setSttEngine(statusData.stt_engine || 'whisper');
+              onStatusChange?.('connected');
+            } else {
+              onStatusChange?.(statusData?.status || 'unknown');
+            }
           }
         } catch {}
       };
@@ -75,10 +89,10 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
           return;
         }
 
-        // Auto-reconnect with exponential backoff
+        // Auto-reconnect with exponential backoff (capped at 16s)
         if (reconnectAttemptRef.current < maxReconnectAttempts) {
           reconnectAttemptRef.current += 1;
-          const delay = baseDelay * Math.pow(2, reconnectAttemptRef.current - 1);
+          const delay = Math.min(baseDelay * Math.pow(2, reconnectAttemptRef.current - 1), 16000);
           updateStatus('reconnecting');
 
           reconnectTimerRef.current = setTimeout(() => {
@@ -86,18 +100,18 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
           }, delay);
         } else {
           updateStatus('disconnected');
-          onError?.('WebSocket connection lost after multiple attempts');
+          onError?.('WebSocket connection lost after multiple attempts. Please restart recording.');
         }
       };
 
       ws.onerror = () => {
-        onError?.('WebSocket connection error');
+        // Don't immediately surface transient errors — let onclose handle reconnection
       };
     } catch (err) {
       updateStatus('disconnected');
       onError?.('Failed to create WebSocket connection');
     }
-  }, [sessionId, onTranscriptChunk, onStatusChange, onError, updateStatus]);
+  }, [sessionId, onTranscriptChunk, onStatusChange, onError, updateStatus, language]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -142,6 +156,7 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
 
   return {
     status,
+    sttEngine,
     connect,
     disconnect,
     sendAudio,
