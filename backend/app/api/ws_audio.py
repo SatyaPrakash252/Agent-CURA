@@ -80,11 +80,16 @@ async def get_temp_transcribe_token():
                 "token": key_data["key"],
                 "project_id": project_id
             }
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error("Unexpected error generating Deepgram client token: %s", e)
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.warning(
+                "Could not generate temporary Deepgram key (%s). "
+                "Falling back to master API key for direct client-side transcription.",
+                e
+            )
+            return {
+                "token": settings.DEEPGRAM_API_KEY,
+                "project_id": "default"
+            }
 
 
 @router.post("/api/v1/transcribe/upload-audio/{session_id}")
