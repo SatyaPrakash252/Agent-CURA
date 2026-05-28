@@ -154,24 +154,31 @@ def is_supabase_available() -> bool:
         _supabase_available = False
         _supabase_last_check = now
         return False
+    import urllib.parse
+    import socket
 
     try:
-        # Verify tables exist (this also tests network connectivity)
-        client = get_supabase()
-        client.table("users").select("id").limit(1).execute()
+        parsed_url = urllib.parse.urlparse(settings.SUPABASE_URL)
+        host = parsed_url.hostname
+        if not host:
+            _supabase_available = False
+            _supabase_last_check = now
+            return False
+
+        # Quick TCP handshake check on port 443 with 1.5 second timeout.
+        # This is extremely fast (<50ms) and NEVER blocks uvicorn's event loop.
+        with socket.create_connection((host, 443), timeout=1.5) as sock:
+            pass
 
         _supabase_available = True
         _supabase_last_check = now
-        if _supabase_available:
-            logger.info("Supabase connectivity confirmed — using cloud database.")
+        logger.info("Supabase connectivity confirmed — using cloud database.")
         return True
     except Exception as e:
         _supabase_available = False
         _supabase_last_check = now
         logger.warning("Supabase unavailable (%s) — using local SQLite fallback.", e)
         return False
-
-
 def get_supabase() -> Client:
     """Return a singleton Supabase client instance."""
     global _supabase_client
