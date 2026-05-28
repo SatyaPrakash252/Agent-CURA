@@ -156,13 +156,7 @@ def is_supabase_available() -> bool:
         return False
 
     try:
-        from urllib.parse import urlparse
-        import socket
-        parsed = urlparse(settings.SUPABASE_URL)
-        socket.setdefaulttimeout(5.0)
-        socket.getaddrinfo(parsed.hostname, parsed.port or 443)
-
-        # Verify tables exist
+        # Verify tables exist (this also tests network connectivity)
         client = get_supabase()
         client.table("users").select("id").limit(1).execute()
 
