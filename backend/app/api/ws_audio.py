@@ -131,19 +131,32 @@ async def audio_websocket(
 
         if not use_deepgram:
             return False
-
         url = _build_deepgram_url(language)
         try:
             is_reconnecting = True
-            dg_ws = await asyncio.wait_for(
-                websockets.connect(
-                    url,
-                    additional_headers={"Authorization": f"Token {dg_api_key}"},
-                    ping_interval=20,
-                    ping_timeout=10,
-                ),
-                timeout=10.0,
-            )
+            headers = {"Authorization": f"Token {dg_api_key}"}
+            try:
+                # Try websockets version >= 14.0 argument (additional_headers)
+                dg_ws = await asyncio.wait_for(
+                    websockets.connect(
+                        url,
+                        additional_headers=headers,
+                        ping_interval=20,
+                        ping_timeout=10,
+                    ),
+                    timeout=10.0,
+                )
+            except TypeError:
+                # Fall back to websockets version < 14.0 argument (extra_headers)
+                dg_ws = await asyncio.wait_for(
+                    websockets.connect(
+                        url,
+                        extra_headers=headers,
+                        ping_interval=20,
+                        ping_timeout=10,
+                    ),
+                    timeout=10.0,
+                )
             is_reconnecting = False
             logger.info("[%s] Connected to Deepgram WebSocket (attempt %d)", session_id, dg_reconnect_count + 1)
 
