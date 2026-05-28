@@ -17,15 +17,21 @@ const getApiBaseUrl = () => {
 
 const getWsBaseUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  let wsUrl = "ws://127.0.0.1:8000";
+
   if (envUrl && envUrl.length > 0 && envUrl !== "http://localhost:8000") {
     // Convert http(s) URL to ws(s) URL
-    return envUrl.replace(/\/+$/, "").replace(/^http/, "ws");
-  }
-  if (typeof window !== "undefined") {
+    wsUrl = envUrl.replace(/\/+$/, "").replace(/^https/, "wss").replace(/^http/, "ws");
+  } else if (typeof window !== "undefined") {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.hostname}:8000`;
+    wsUrl = `${protocol}//${window.location.hostname}:8000`;
   }
-  return "ws://127.0.0.1:8000";
+
+  // Force secure WebSocket (wss) if the parent page is HTTPS to avoid browser Mixed Content blocks
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    wsUrl = wsUrl.replace(/^ws:/, "wss:");
+  }
+  return wsUrl;
 };
 
 export const API_BASE_URL = getApiBaseUrl();
