@@ -90,20 +90,19 @@ def _build_deepgram_url(language: str | None) -> str:
     - NO smart_format: punctuation formatting adds processing delay
     - no_delay=true: tells Deepgram to send results immediately
     - endpointing=150: finalize after just 150ms of silence (instant)
-    - utterance_end_ms=400: reduced from 1000ms for faster turnaround
+    - utterance_end_ms=1000: set to recommended 1000ms minimum to prevent HTTP 400 Bad Request
     - interim_results=true: show partial text as user speaks
     """
     url = (
         "wss://api.deepgram.com/v1/listen?"
         "model=nova-2&encoding=linear16&sample_rate=16000&channels=1"
         "&punctuate=true&interim_results=true&no_delay=true"
-        "&endpointing=150&utterance_end_ms=400&vad_events=true"
+        "&endpointing=150&utterance_end_ms=1000&vad_events=true"
     )
     if language and language != "auto":
         url += f"&language={language}"
-    else:
-        url += "&detect_language=true"
     return url
+
 
 
 @router.websocket("/ws/v1/audio/{session_id}")

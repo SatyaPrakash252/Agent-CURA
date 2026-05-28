@@ -519,25 +519,25 @@ export default function ConsultationPage() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Speaker Labels */}
+          </div>          {/* Speaker Labels */}
           {segments.length > 0 && <SpeakerLabels segments={segments} />}
 
-          {/* Live Transcript — shows real-time text from Whisper */}
-          {segments.length > 0 && (
+          {/* Live Transcript — shows real-time text from Deepgram */}
+          {(segments.length > 0 || isRecording) && (
             <div className="surface p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <h3 className="label">Live Transcript</h3>
-                  <button
-                    type="button"
-                    onClick={handleSwapAllSpeakers}
-                    className="text-[10px] px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.1] transition-all flex items-center gap-1 font-semibold select-none"
-                    title="Swap Doctor and Patient speakers for all segments"
-                  >
-                    🔁 Swap Speakers
-                  </button>
+                  {segments.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSwapAllSpeakers}
+                      className="text-[10px] px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.1] text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.1] transition-all flex items-center gap-1 font-semibold select-none"
+                      title="Swap Doctor and Patient speakers for all segments"
+                    >
+                      🔁 Swap Speakers
+                    </button>
+                  )}
                 </div>
                 <span className="text-[11.5px] text-[#52525b] font-mono">{segments.length} segments</span>
               </div>
