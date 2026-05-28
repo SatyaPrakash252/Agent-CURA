@@ -19,7 +19,7 @@ interface UseAudioRecorderReturn {
   isRecording: boolean;
   isPaused: boolean;
   startRecording: () => Promise<void>;
-  stopRecording: () => void;
+  stopRecording: () => Blob | null;
   pauseRecording: () => void;
   resumeRecording: () => void;
   waveformData: number[];
@@ -113,6 +113,7 @@ export function useAudioRecorder({
   const sendAudioRef = useRef(sendAudio);
   const audioBufferListRef = useRef<Float32Array[]>([]);
   const currentBufferLengthRef = useRef<number>(0);
+  const recordedChunksRef = useRef<ArrayBuffer[]>([]);
 
   useEffect(() => {
     sendAudioRef.current = sendAudio;
@@ -183,6 +184,7 @@ export function useAudioRecorder({
       // Reset buffering states
       audioBufferListRef.current = [];
       currentBufferLengthRef.current = 0;
+      recordedChunksRef.current = [];
 
       workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
         if (isPausedRef.current) return;
@@ -201,6 +203,7 @@ export function useAudioRecorder({
           }
           
           const pcm = floatTo16BitPCM(merged);
+          recordedChunksRef.current.push(pcm);
           sendAudioRef.current(pcm);
 
           audioBufferListRef.current = [];
@@ -249,10 +252,14 @@ export function useAudioRecorder({
         offset += buf.length;
       }
       const pcm = floatTo16BitPCM(merged);
+      recordedChunksRef.current.push(pcm);
       sendAudioRef.current(pcm);
       audioBufferListRef.current = [];
       currentBufferLengthRef.current = 0;
     }
+
+    const fullAudioBlob = new Blob(recordedChunksRef.current, { type: "application/octet-stream" });
+    recordedChunksRef.current = [];
 
     // Clear intervals
     if (waveformIntervalRef.current) {
@@ -290,6 +297,8 @@ export function useAudioRecorder({
     setIsPaused(false);
     isPausedRef.current = false;
     setWaveformData(new Array(30).fill(0));
+    
+    return fullAudioBlob;
   }, []);
 
   const pauseRecording = useCallback(() => {

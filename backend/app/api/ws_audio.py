@@ -19,7 +19,7 @@ import time
 
 import numpy as np
 import websockets
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form
 
 from app.config import get_settings
 from app.services.audio_storage import save_audio_to_storage
@@ -28,6 +28,92 @@ from app.services.transcriber import transcribe_audio
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/api/v1/transcribe/token")
+async def get_temp_transcribe_token():
+    """
+    Generate a restricted, temporary Deepgram API token for direct browser client access.
+    Self-destructs automatically in 5 minutes.
+    """
+    settings = get_settings()
+    if not settings.DEEPGRAM_API_KEY or len(settings.DEEPGRAM_API_KEY.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Deepgram API key not configured")
+
+    import httpx
+    headers = {
+        "Authorization": f"Token {settings.DEEPGRAM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            # 1. Fetch project ID dynamically
+            projects_resp = await client.get("https://api.deepgram.com/v1/projects", headers=headers, timeout=5.0)
+            if projects_resp.status_code != 200:
+                logger.error("Failed to fetch Deepgram projects: %s", projects_resp.text)
+                raise HTTPException(status_code=projects_resp.status_code, detail=f"Failed to fetch Deepgram projects: {projects_resp.text}")
+
+            projects = projects_resp.json().get("projects", [])
+            if not projects:
+                raise HTTPException(status_code=404, detail="No Deepgram projects found")
+            project_id = projects[0]["project_id"]
+
+            # 2. Request scoped, short-lived API key (expires in 5 minutes)
+            payload = {
+                "comment": "Cura Temporary Client Key",
+                "scopes": ["usage:write"],
+                "time_to_live_in_seconds": 300  # Expires in 5 minutes
+            }
+            key_resp = await client.post(
+                f"https://api.deepgram.com/v1/projects/{project_id}/keys",
+                headers=headers,
+                json=payload,
+                timeout=5.0
+            )
+            if key_resp.status_code not in (200, 201):
+                logger.error("Failed to generate temporary Deepgram key: %s", key_resp.text)
+                raise HTTPException(status_code=key_resp.status_code, detail=f"Failed to create temp key: {key_resp.text}")
+
+            key_data = key_resp.json()
+            return {
+                "token": key_data["key"],
+                "project_id": project_id
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Unexpected error generating Deepgram client token: %s", e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/transcribe/upload-audio/{session_id}")
+async def upload_consultation_audio(
+    session_id: str,
+    file: UploadFile = File(...),
+    patient_id: str = Form(...)
+) -> dict:
+    """
+    HTTP POST upload for full session audio.
+    Used by the direct client-to-Deepgram recorder flow to persist audio files.
+    """
+    logger.info("Received audio upload request for session %s (file: %s)", session_id, file.filename)
+    try:
+        content = await file.read()
+        file_url = await save_audio_to_storage(
+            session_id=session_id,
+            patient_id=patient_id,
+            audio_data=content,
+            sample_rate=SAMPLE_RATE,
+        )
+        return {
+            "status": "success",
+            "audio_url": file_url,
+            "session_id": session_id
+        }
+    except Exception as e:
+        logger.error("[%s] Audio upload failed: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=f"Failed to upload audio: {str(e)}")
 
 # Audio parameters
 SAMPLE_RATE = 16000  # 16kHz

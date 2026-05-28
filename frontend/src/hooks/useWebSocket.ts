@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { WS_BASE_URL } from '../lib/constants';
+import { WS_BASE_URL, API_BASE_URL } from '../lib/constants';
 import type { TranscriptChunk } from '../types';
 
 interface UseWebSocketOptions {
@@ -28,16 +28,41 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
     onStatusChange?.(newStatus);
   }, [onStatusChange]);
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     updateStatus('connecting');
 
     try {
-      const url = language
-        ? `${WS_BASE_URL}/ws/v1/audio/${sessionId}?language=${encodeURIComponent(language)}`
-        : `${WS_BASE_URL}/ws/v1/audio/${sessionId}`;
-      const ws = new WebSocket(url);
+      // 1. Try to fetch a temporary direct Deepgram token from the backend
+      let tempToken = "";
+      try {
+        const tokenResp = await fetch(`${API_BASE_URL}/api/v1/transcribe/token`);
+        if (tokenResp.ok) {
+          const tokenData = await tokenResp.json();
+          tempToken = tokenData.token;
+        }
+      } catch (tokenErr) {
+        console.warn("Could not fetch temporary Deepgram token from backend, falling back to proxy:", tokenErr);
+      }
+
+      let ws: WebSocket;
+
+      if (tempToken) {
+        // Direct Client-to-Deepgram Streaming (Industry Standard)
+        console.log("Establishing DIRECT Client-to-Deepgram WebSocket connection...");
+        const url = `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&punctuate=true&interim_results=true&no_delay=true&endpointing=150&utterance_end_ms=1000&vad_events=true`;
+        ws = new WebSocket(url, ["token", tempToken]);
+        setSttEngine('deepgram');
+      } else {
+        // Fallback: Backend-proxied WebSocket Streaming
+        console.log("Establishing backend-proxied WebSocket connection...");
+        const url = language
+          ? `${WS_BASE_URL}/ws/v1/audio/${sessionId}?language=${encodeURIComponent(language)}`
+          : `${WS_BASE_URL}/ws/v1/audio/${sessionId}`;
+        ws = new WebSocket(url);
+      }
+      
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -48,6 +73,21 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Handle Direct Deepgram responses
+          if (data.channel && data.channel.alternatives) {
+            const alt = data.channel.alternatives[0];
+            const text = alt.transcript;
+            if (text && text.trim().length > 0) {
+              onTranscriptChunk({
+                text: text,
+                speaker: 'Doctor',
+                timestamp: data.start || 0,
+                is_final: data.is_final || false,
+              });
+            }
+            return;
+          }
 
           if (data.type === 'transcript' && data.data) {
             onTranscriptChunk({

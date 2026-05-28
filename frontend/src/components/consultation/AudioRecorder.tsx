@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import type { TranscriptChunk } from '../../types';
+import { API_BASE_URL } from '../../lib/constants';
 import ClinicalAgentOrb from './ClinicalAgentOrb';
 
 interface AudioRecorderProps {
@@ -57,9 +58,35 @@ export default function AudioRecorder({ sessionId, patientId, onTranscriptChunk,
       if (status === 'connected') {
         sendControl('stop', { patient_id: patientId });
       }
-      // 2. Stop local capture
-      stopRecording();
-      // 3. Toggle state
+      // 2. Stop local capture and retrieve compiled audio Blob
+      const audioBlob = stopRecording();
+
+      // 3. Asynchronously upload the audio Blob to the backend REST endpoint for storage persistence
+      if (audioBlob && audioBlob.size > 0) {
+        (async () => {
+          try {
+            const formData = new FormData();
+            formData.append("file", audioBlob, "consultation.pcm");
+            formData.append("patient_id", patientId);
+
+            const uploadUrl = `${API_BASE_URL}/api/v1/transcribe/upload-audio/${sessionId}`;
+            console.log(`Uploading accumulated audio recording to: ${uploadUrl} (${audioBlob.size} bytes)...`);
+            const uploadResp = await fetch(uploadUrl, {
+              method: "POST",
+              body: formData,
+            });
+            if (uploadResp.ok) {
+              console.log("Audio recording successfully uploaded to backend storage!");
+            } else {
+              console.error("Backend rejected audio upload:", await uploadResp.text());
+            }
+          } catch (uploadErr) {
+            console.error("Failed to upload local audio recording:", uploadErr);
+          }
+        })();
+      }
+
+      // 4. Toggle state
       onToggleRecording();
     }
   };
