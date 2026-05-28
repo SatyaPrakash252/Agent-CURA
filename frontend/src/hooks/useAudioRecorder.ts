@@ -111,6 +111,8 @@ export function useAudioRecorder({
   );
   const isPausedRef = useRef(false);
   const sendAudioRef = useRef(sendAudio);
+  const audioBufferListRef = useRef<Float32Array[]>([]);
+  const currentBufferLengthRef = useRef<number>(0);
 
   useEffect(() => {
     sendAudioRef.current = sendAudio;
@@ -174,14 +176,36 @@ export function useAudioRecorder({
       const workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
       workletNodeRef.current = workletNode;
 
-      // Process audio chunks immediately as they arrive from the audio thread
+      // Process audio chunks and buffer them up to 150ms to prevent high packet-rate network resets
       const inputSampleRate = audioContext.sampleRate;
+      const bufferSizeLimit = Math.round(sampleRate * 0.15); // 150ms of audio = 2400 samples
+
+      // Reset buffering states
+      audioBufferListRef.current = [];
+      currentBufferLengthRef.current = 0;
+
       workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
         if (isPausedRef.current) return;
         const rawSamples = event.data;
         const downsampled = downsampleBuffer(rawSamples, inputSampleRate, sampleRate);
-        const pcm = floatTo16BitPCM(downsampled);
-        sendAudioRef.current(pcm);
+        
+        audioBufferListRef.current.push(downsampled);
+        currentBufferLengthRef.current += downsampled.length;
+
+        if (currentBufferLengthRef.current >= bufferSizeLimit) {
+          const merged = new Float32Array(currentBufferLengthRef.current);
+          let offset = 0;
+          for (const buf of audioBufferListRef.current) {
+            merged.set(buf, offset);
+            offset += buf.length;
+          }
+          
+          const pcm = floatTo16BitPCM(merged);
+          sendAudioRef.current(pcm);
+
+          audioBufferListRef.current = [];
+          currentBufferLengthRef.current = 0;
+        }
       };
 
       source.connect(workletNode);
@@ -216,6 +240,20 @@ export function useAudioRecorder({
   }, [sampleRate]);
 
   const stopRecording = useCallback(() => {
+    // Flush any remaining audio in the buffer before closing down
+    if (currentBufferLengthRef.current > 0) {
+      const merged = new Float32Array(currentBufferLengthRef.current);
+      let offset = 0;
+      for (const buf of audioBufferListRef.current) {
+        merged.set(buf, offset);
+        offset += buf.length;
+      }
+      const pcm = floatTo16BitPCM(merged);
+      sendAudioRef.current(pcm);
+      audioBufferListRef.current = [];
+      currentBufferLengthRef.current = 0;
+    }
+
     // Clear intervals
     if (waveformIntervalRef.current) {
       clearInterval(waveformIntervalRef.current);
