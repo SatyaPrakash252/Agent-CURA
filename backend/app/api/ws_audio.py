@@ -44,6 +44,22 @@ MAX_DG_RECONNECT_ATTEMPTS = 3
 DG_RECONNECT_BASE_DELAY = 1.0  # seconds
 
 
+def is_ws_open(ws) -> bool:
+    """Check if the WebSocket connection is open, compatible with both older websockets (.closed)
+    and newer websockets >= 14.0 (.state attribute)."""
+    if ws is None:
+        return False
+    if hasattr(ws, "state"):
+        try:
+            from websockets import State
+            return ws.state == State.OPEN
+        except ImportError:
+            pass
+    if hasattr(ws, "closed"):
+        return not ws.closed
+    return True
+
+
 def _detect_speaker(
     audio_chunk: np.ndarray,
     prev_speaker: str,
@@ -225,7 +241,7 @@ async def audio_websocket(
         """Send audio data to Deepgram, handling dead sockets gracefully."""
         nonlocal dg_ws
 
-        if dg_ws is None or dg_ws.closed:
+        if not is_ws_open(dg_ws):
             # Socket is dead — attempt reconnection
             success = await reconnect_deepgram()
             if not success:
@@ -259,7 +275,7 @@ async def audio_websocket(
         """Listen for Deepgram responses and forward them to the frontend."""
         nonlocal segment_counter
         try:
-            while dg_ws and not dg_ws.closed:
+            while is_ws_open(dg_ws):
                 try:
                     res = await asyncio.wait_for(dg_ws.recv(), timeout=30.0)
                 except asyncio.TimeoutError:
@@ -374,7 +390,7 @@ async def audio_websocket(
                 await asyncio.sleep(15)
                 await websocket.send_json({"type": "ping", "data": {"ts": time.time()}})
                 # Send keepalive to Deepgram too
-                if dg_ws and not dg_ws.closed:
+                if is_ws_open(dg_ws):
                     try:
                         await dg_ws.send(json.dumps({"type": "KeepAlive"}))
                     except Exception:
@@ -437,7 +453,7 @@ async def audio_websocket(
                             await process_fallback_audio()
 
                         # Close Deepgram connection gracefully
-                        if dg_ws and not dg_ws.closed:
+                        if is_ws_open(dg_ws):
                             try:
                                 await dg_ws.send(json.dumps({"type": "CloseStream"}))
                                 await asyncio.sleep(1.5)  # give time for final transcripts
