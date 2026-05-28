@@ -83,12 +83,21 @@ def _detect_speaker(
 
 
 def _build_deepgram_url(language: str | None) -> str:
-    """Build the Deepgram WebSocket URL with all parameters."""
+    """Build the Deepgram WebSocket URL with low-latency streaming parameters.
+    
+    Key decisions for instant transcription:
+    - NO diarize: diarization buffers huge audio chunks, adds 5-15s delay
+    - NO smart_format: punctuation formatting adds processing delay
+    - no_delay=true: tells Deepgram to send results immediately
+    - endpointing=150: finalize after just 150ms of silence (instant)
+    - utterance_end_ms=400: reduced from 1000ms for faster turnaround
+    - interim_results=true: show partial text as user speaks
+    """
     url = (
         "wss://api.deepgram.com/v1/listen?"
         "model=nova-2&encoding=linear16&sample_rate=16000&channels=1"
-        "&diarize=true&smart_format=true&interim_results=true"
-        "&endpointing=300&utterance_end_ms=1000&vad_events=true"
+        "&punctuate=true&interim_results=true&no_delay=true"
+        "&endpointing=150&utterance_end_ms=400&vad_events=true"
     )
     if language and language != "auto":
         url += f"&language={language}"
@@ -260,21 +269,12 @@ async def audio_websocket(
                         if not text:
                             continue
 
-                        # Extract diarized speaker if available
+                        # Without streaming diarization, default to "Doctor"
+                        # Frontend speaker override handles Doctor/Patient assignment
                         speaker_label = "Doctor"
-                        words = alt.get("words", [])
-                        if words:
-                            spk = words[0].get("speaker", 0)
-                            if spk not in speaker_map:
-                                if len(speaker_map) == 0:
-                                    speaker_map[spk] = "Doctor"
-                                elif len(speaker_map) == 1:
-                                    speaker_map[spk] = "Patient"
-                                else:
-                                    speaker_map[spk] = "Patient"
-                            speaker_label = speaker_map[spk]
 
                         is_final = data.get("is_final", False)
+                        speech_final = data.get("speech_final", False)
                         if is_final:
                             segment_counter += 1
                         elapsed = time.monotonic() - start_time
@@ -286,6 +286,7 @@ async def audio_websocket(
                                 "speaker": speaker_label,
                                 "timestamp": round(elapsed, 2),
                                 "is_final": is_final,
+                                "speech_final": speech_final,
                             },
                         }
                         try:
