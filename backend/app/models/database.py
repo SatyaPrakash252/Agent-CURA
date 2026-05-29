@@ -927,3 +927,153 @@ async def get_dashboard_stats() -> dict:
             "today_sessions": 0,
             "avg_confidence": 0
         }
+
+
+async def sync_sqlite_to_supabase() -> None:
+    """
+    Scan local SQLite database and synchronize any records missing in Supabase.
+    Automatically self-heals database splits after offline operations.
+    """
+    if not is_supabase_available():
+        logger.info("Supabase is offline — skipping local sync.")
+        return
+
+    logger.info("Initializing local SQLite to Supabase database sync...")
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        client = get_supabase()
+
+        # 1. Sync Users
+        c.execute("SELECT * FROM users")
+        local_users = [dict(r) for r in c.fetchall()]
+        for u in local_users:
+            try:
+                resp = client.table("users").select("id").eq("username", u["username"]).execute()
+                if not resp.data:
+                    logger.info("Syncing user '%s' to Supabase...", u["username"])
+                    record = {
+                        "username": u["username"],
+                        "password_hash": u["password_hash"],
+                        "full_name": u["full_name"],
+                        "role": u["role"],
+                        "expertise": u["expertise"],
+                        "credentials": u["credentials"],
+                        "is_active": bool(u["is_active"]),
+                        "created_at": u["created_at"],
+                        "last_login": u["last_login"]
+                    }
+                    client.table("users").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync user %s: %s", u["username"], ex)
+
+        # 2. Sync Patients
+        c.execute("SELECT * FROM patients")
+        local_patients = [dict(r) for r in c.fetchall()]
+        for p in local_patients:
+            try:
+                resp = client.table("patients").select("id").eq("patient_id", p["patient_id"]).execute()
+                if not resp.data:
+                    logger.info("Syncing patient '%s' to Supabase...", p["patient_id"])
+                    record = {
+                        "patient_id": p["patient_id"],
+                        "name": p["name"],
+                        "age": p["age"],
+                        "gender": p["gender"],
+                        "contact": p["contact"],
+                        "notes": p["notes"],
+                        "created_at": p["created_at"]
+                    }
+                    client.table("patients").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync patient %s: %s", p["patient_id"], ex)
+
+        # 3. Sync Consultations
+        c.execute("SELECT * FROM consultations")
+        local_consultations = [dict(r) for r in c.fetchall()]
+        for con in local_consultations:
+            try:
+                resp = client.table("consultations").select("id").eq("session_id", con["session_id"]).execute()
+                if not resp.data:
+                    logger.info("Syncing consultation session '%s' to Supabase...", con["session_id"])
+                    record = {
+                        "session_id": con["session_id"],
+                        "patient_id": con["patient_id"],
+                        "subjective": con["subjective"],
+                        "objective": con["objective"],
+                        "assessment": con["assessment"],
+                        "plan": con["plan"],
+                        "raw_transcript": con["raw_transcript"],
+                        "redacted_transcript": con["redacted_transcript"],
+                        "confidence_score": con["confidence_score"],
+                        "fhir_payload": json.loads(con["fhir_payload"]) if con["fhir_payload"] else {},
+                        "created_at": con["created_at"]
+                    }
+                    client.table("consultations").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync consultation %s: %s", con["session_id"], ex)
+
+        # 4. Sync Audio Recordings
+        c.execute("SELECT * FROM audio_recordings")
+        local_audios = [dict(r) for r in c.fetchall()]
+        for au in local_audios:
+            try:
+                resp = client.table("audio_recordings").select("id").eq("session_id", au["session_id"]).execute()
+                if not resp.data:
+                    logger.info("Syncing audio recording metadata for session '%s' to Supabase...", au["session_id"])
+                    record = {
+                        "session_id": au["session_id"],
+                        "patient_id": au["patient_id"],
+                        "file_url": au["file_url"],
+                        "duration_seconds": au["duration_seconds"],
+                        "created_at": au["created_at"]
+                    }
+                    client.table("audio_recordings").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync audio recording metadata for session %s: %s", au["session_id"], ex)
+
+        # 5. Sync Audit Logs
+        c.execute("SELECT * FROM audit_log")
+        local_audits = [dict(r) for r in c.fetchall()]
+        for al in local_audits:
+            try:
+                resp = client.table("audit_log").select("id").eq("username", al["username"]).eq("action", al["action"]).eq("created_at", al["created_at"]).execute()
+                if not resp.data:
+                    record = {
+                        "username": al["username"],
+                        "action": al["action"],
+                        "resource_type": al["resource_type"],
+                        "resource_id": al["resource_id"],
+                        "ip_address": al["ip_address"],
+                        "details": json.loads(al["details"]) if al["details"] else {},
+                        "created_at": al["created_at"]
+                    }
+                    client.table("audit_log").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync audit log: %s", ex)
+
+        # 6. Sync FHIR Transmissions
+        c.execute("SELECT * FROM fhir_transmissions")
+        local_fhir = [dict(r) for r in c.fetchall()]
+        for fh in local_fhir:
+            try:
+                resp = client.table("fhir_transmissions").select("id").eq("session_id", fh["session_id"]).execute()
+                if not resp.data:
+                    record = {
+                        "session_id": fh["session_id"],
+                        "patient_id": fh["patient_id"],
+                        "bundle": json.loads(fh["bundle"]) if fh["bundle"] else {},
+                        "status": fh["status"],
+                        "transmitted_at": fh["transmitted_at"],
+                        "created_at": fh["created_at"]
+                    }
+                    client.table("fhir_transmissions").insert(record).execute()
+            except Exception as ex:
+                logger.error("Failed to sync FHIR transmission %s: %s", fh["session_id"], ex)
+
+        conn.close()
+        logger.info("Local SQLite to Supabase database sync complete.")
+    except Exception as e:
+        logger.error("Failed to execute database sync: %s", e)

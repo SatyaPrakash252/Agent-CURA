@@ -73,6 +73,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Failed to bootstrap admin user: %s", e)
 
+    # Synchronize local SQLite records to Supabase at startup
+    from app.models.database import sync_sqlite_to_supabase
+    try:
+        await sync_sqlite_to_supabase()
+    except Exception as sync_err:
+        logger.error("Failed to run database sync at startup: %s", sync_err)
+
     yield
 
     logger.info("Project Cura API shutting down...")

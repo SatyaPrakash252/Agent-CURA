@@ -51,7 +51,7 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
       if (tempToken) {
         // Direct Client-to-Deepgram Streaming (Industry Standard)
         console.log("Establishing DIRECT Client-to-Deepgram WebSocket connection...");
-        const url = `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&punctuate=true&interim_results=true&no_delay=true&endpointing=150&utterance_end_ms=1000&vad_events=true`;
+        const url = `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=16000&channels=1&punctuate=true&interim_results=true&no_delay=true&endpointing=150&utterance_end_ms=1000&vad_events=true&diarize=true`;
         ws = new WebSocket(url, ["token", tempToken]);
         setSttEngine('deepgram');
       } else {
@@ -79,9 +79,29 @@ export function useWebSocket({ sessionId, onTranscriptChunk, onStatusChange, onE
             const alt = data.channel.alternatives[0];
             const text = alt.transcript;
             if (text && text.trim().length > 0) {
+              let speakerLabel = 'Doctor';
+              const words = alt.words || [];
+              if (words.length > 0) {
+                const speakerCounts: Record<number, number> = {};
+                for (const w of words) {
+                  const spk = w.speaker ?? 0;
+                  speakerCounts[spk] = (speakerCounts[spk] || 0) + 1;
+                }
+                let maxCount = 0;
+                let activeSpeaker = 0;
+                for (const spk in speakerCounts) {
+                  const cnt = speakerCounts[spk];
+                  if (cnt > maxCount) {
+                    maxCount = cnt;
+                    activeSpeaker = parseInt(spk);
+                  }
+                }
+                speakerLabel = activeSpeaker === 0 ? 'Doctor' : 'Patient';
+              }
+
               onTranscriptChunk({
                 text: text,
-                speaker: 'Doctor',
+                speaker: speakerLabel,
                 timestamp: data.start || 0,
                 is_final: data.is_final || false,
               });

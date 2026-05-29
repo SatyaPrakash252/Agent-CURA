@@ -193,7 +193,7 @@ def _build_deepgram_url(language: str | None) -> str:
     """Build the Deepgram WebSocket URL with low-latency streaming parameters.
     
     Key decisions for instant transcription:
-    - NO diarize: diarization buffers huge audio chunks, adds 5-15s delay
+    - Diarize: enable low-latency Nova-2 streaming diarization (0% server overhead)
     - NO smart_format: punctuation formatting adds processing delay
     - no_delay=true: tells Deepgram to send results immediately
     - endpointing=150: finalize after just 150ms of silence (instant)
@@ -205,6 +205,7 @@ def _build_deepgram_url(language: str | None) -> str:
         "model=nova-2&encoding=linear16&sample_rate=16000&channels=1"
         "&punctuate=true&interim_results=true&no_delay=true"
         "&endpointing=150&utterance_end_ms=1000&vad_events=true"
+        "&diarize=true"
     )
     if language and language != "auto":
         url += f"&language={language}"
@@ -388,9 +389,17 @@ async def audio_websocket(
                         if not text:
                             continue
 
-                        # Without streaming diarization, default to "Doctor"
-                        # Frontend speaker override handles Doctor/Patient assignment
+                        # Parse speaker from Deepgram diarization words payload
                         speaker_label = "Doctor"
+                        words = alt.get("words", [])
+                        if words:
+                            speaker_counts = {}
+                            for w in words:
+                                spk_id = w.get("speaker", 0)
+                                speaker_counts[spk_id] = speaker_counts.get(spk_id, 0) + 1
+                            if speaker_counts:
+                                dominant_spk = max(speaker_counts, key=speaker_counts.get)
+                                speaker_label = "Doctor" if dominant_spk == 0 else "Patient"
 
                         is_final = data.get("is_final", False)
                         speech_final = data.get("speech_final", False)
