@@ -13,12 +13,11 @@
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- Step 1: Clean up unnecessary tables
+-- Step 1: Clean up ALL existing tables (Force Drop to start 100% fresh)
 -- ----------------------------------------------------------------------------
 DO $$
 DECLARE
     r RECORD;
-    target_tables TEXT[] := ARRAY['users', 'patients', 'consultations', 'audio_recordings', 'audit_log', 'fhir_transmissions'];
 BEGIN
     FOR r IN 
         SELECT table_name 
@@ -26,16 +25,13 @@ BEGIN
         WHERE table_schema = 'public' 
           AND table_type = 'BASE TABLE'
     LOOP
-        -- If the table is NOT one of our 6 core Project Cura tables, drop it!
-        IF NOT (r.table_name = ANY(target_tables)) THEN
-            RAISE NOTICE 'Dropping unnecessary table: %', r.table_name;
-            EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.table_name) || ' CASCADE';
-        END IF;
+        RAISE NOTICE 'Dropping table: %', r.table_name;
+        EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.table_name) || ' CASCADE';
     END LOOP;
 END $$;
 
 -- ----------------------------------------------------------------------------
--- Step 2: Create Core Project Cura Tables (if they don't exist)
+-- Step 2: Recreate Core Project Cura Tables Cleanly
 -- ----------------------------------------------------------------------------
 
 -- 1. Users table (authentication & roles)
