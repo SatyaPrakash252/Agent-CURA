@@ -33,6 +33,7 @@ export default function ConsultationPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
   const segmentCounterRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { toasts, dismissToast, success: toastSuccess, error: toastError } = useToast();
 
   // Patient Registration Details Mode & Fields
@@ -62,6 +63,13 @@ export default function ConsultationPage() {
   useEffect(() => {
     fetchExistingPatients();
   }, []);
+
+  // Auto-scroll transcript container to bottom when new segments are added
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [segments]);
 
   const genSessionId = () => `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -541,7 +549,7 @@ export default function ConsultationPage() {
                 </div>
                 <span className="text-[11.5px] text-[#52525b] font-mono">{segments.length} segments</span>
               </div>
-              <div className="max-h-[300px] overflow-y-auto">
+              <div ref={scrollContainerRef} className="max-h-[300px] overflow-y-auto">
                 <LiveTranscript 
                   segments={segments} 
                   onEdit={handleEditTranscript} 
